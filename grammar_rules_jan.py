@@ -106,6 +106,8 @@ ITR_TRY = 1000
 NAME_PAIR_WEIGHT = 0.2
 MAX_VALUE_ENTRIES = 500
 
+# test for git commit
+
 PAGERANK_CRITICAL_VALUE = 0.0000000001
 PAGERANK_QVALUE = 0.2  # a baseline score with which probability the traverse jumps to a random node
 
@@ -785,11 +787,11 @@ class TYPENP(BASENP):
 		self.clones = []
 
 	def print(self):
-		print("c_english: ", c_english)
-		print("c_chinese: ", c_chinese)
-		print("z: ", z)
-		print("overall_idx: ", overall_idx)
-		print("properties: ", properties)
+		print("c_english: ", self.c_english)
+		print("c_chinese: ", self.c_chinese)
+		print("z: ", self.z)
+		print("overall_idx: ", self.overall_idx)
+		print("properties: ", self.properties)
 
 
 class VALUENP(BASENP):
