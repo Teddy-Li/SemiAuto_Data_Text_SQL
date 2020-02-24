@@ -402,6 +402,9 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 		num_values = 2
 	else:
 		num_values = 1
+	if cmper.index == 2 and chosen_prop.dtype in ['int', 'double']:
+		chosen_prop.c_english = 'is equal to {0}'
+		chosen_prop.c_chinese = '与{0}相等'
 	if cmper.index in [8, 9]:
 		rho = random.random()
 		if rho < 0.1 and not no_negative:
@@ -1785,7 +1788,7 @@ class QRYNP:
 STAR_PROP = PROPERTYNP('everything', '全部信息', '*', 'star', overall_idx=-1, values=[], meta_idx=-1)
 
 CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' between {0[0]} and {0[1]}', 1),
-		  CMP(' is equal to {0}', '与{0}相等', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
+		  CMP(' is {0}', '是{0}', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
 		  CMP(' is smaller than {0}', '比{}小', ' < {0}', 4), CMP(' is not smaller than {0}', '不比{0}小', ' >= {0}', 5),
 		  CMP(' is not larger than {0}', '不比{0}大', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
 		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9)]
