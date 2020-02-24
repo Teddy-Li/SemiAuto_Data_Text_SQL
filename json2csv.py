@@ -1,7 +1,15 @@
 import json
 import os
+import argparse
 
-PATHS = ['concert_singer', 'pets_1', 'car_1']
+parser = argparse.ArgumentParser()
+parser.add_argument('-d', '--dark', type=bool, default=False)
+
+args = parser.parse_args()
+if args.dark:
+	PATHS = ['concert_singer', 'pets_1', 'car_1']
+else:
+	PATHS = ['']
 
 for path in PATHS:
 	with open(os.path.join('saved_results', path, 'qrys_saved.json'), 'r') as fp:
