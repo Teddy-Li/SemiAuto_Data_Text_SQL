@@ -8,7 +8,7 @@ args = parser.parse_args()
 with open(args.data_path, 'r') as fp:
 	data = json.load(fp)
 
-with open('/Users/teddy/Files/spider/spider/tables_mod.json', 'r') as fp:
+with open('./spider/spider/tables_mod.json', 'r') as fp:
 	tables = json.load(fp)
 
 #fp = open('train_gold.txt', 'w')
@@ -739,5 +739,5 @@ for key in table_stats:
 	else:
 		n = num_entries[key]
 	table_stats[key]['num_queries'] = n
-with open('/Users/teddy/Files/spider/spider/table_stats_for_num_of_queries.json', 'w') as fp:
+with open('./spider/spider/table_stats_for_num_of_queries.json', 'w') as fp:
 	json.dump(table_stats, fp, indent=4)

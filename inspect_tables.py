@@ -1,9 +1,9 @@
 import json
 import sqlite3
 
-db_path = '/Users/teddy/Files/spider/spider/database/'
+db_path = './spider/spider/database/'
 
-with open("tables.json", 'r') as fp:
+with open("./spider/spider/tables.json", 'r') as fp:
 	file = json.load(fp)
 
 dtypes = {}
@@ -107,7 +107,7 @@ for ent_idx, entry in enumerate(file):
 
 for key in dtypes:
 	print(key, ': ', dtypes[key])
-with open('/Users/teddy/Files/spider/spider/tables_mod.jsonl', 'w') as fp:
+with open('./spider/spider/tables_mod.json', 'w') as fp:
 	json.dump(file, fp, indent=4)
 
 '''

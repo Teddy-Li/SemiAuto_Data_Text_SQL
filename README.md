@@ -28,4 +28,4 @@ After this, SPIDER styled json files for each database and csv file for crowd so
 	bash run_dark.sh
 	python json2csv.py --dark
 
-After this, SPIDER styled json files and csv files for each dark databases can be found in 'saved_results' folder
+After this, SPIDER styled json files and csv files for each dark databases can be found in 'saved_results' folder.

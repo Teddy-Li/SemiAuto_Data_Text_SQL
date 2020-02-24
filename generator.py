@@ -95,8 +95,8 @@ def cut_value_for_like(v, mode):
 
 transform2distribution = transform2distribution_proportional
 
-DATABASE_PATH = '/Users/teddy/Files/spider/spider/database'
-TABLE_MATADATA_PATH = '/Users/teddy/Files/spider/spider/tables_mod.json'
+DATABASE_PATH = './spider/spider/database'
+TABLE_MATADATA_PATH = './spider/spider/tables_mod.json'
 SAVE_PATH = './saved_results/'
 
 tableid = 0

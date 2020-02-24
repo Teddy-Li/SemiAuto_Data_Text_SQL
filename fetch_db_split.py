@@ -6,11 +6,11 @@ def find_from_list(db_id, lst):
 			return [idx, db_id]
 	raise AssertionError
 
-with open('/Users/teddy/Files/spider/spider/tables.json', 'r') as fp:
+with open('./spider/spider/tables.json', 'r') as fp:
 	dbs = json.load(fp)
-with open('/Users/teddy/Files/spider/spider/train_spider.json', 'r') as fp:
+with open('./spider/spider/train_spider.json', 'r') as fp:
 	train_f = json.load(fp)
-with open('/Users/teddy/Files/spider/spider/dev.json', 'r') as fp:
+with open('./spider/spider/dev.json', 'r') as fp:
 	dev_f = json.load(fp)
 
 train_bucket = []
@@ -42,6 +42,6 @@ for idx, item in enumerate(non_bucket):
 
 dct = {'train': train_bucket, 'dev': dev_bucket, 'non': non_bucket}
 
-with open('/Users/teddy/Files/spider/spider/table_bucket.json', 'w') as fp:
+with open('./spider/spider/table_bucket.json', 'w') as fp:
 	json.dump(dct, fp)
 
