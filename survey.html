@@ -1,0 +1,100 @@
+<!-- You must include this JavaScript file -->
+<script src="https://assets.crowd.aws/crowd-html-elements.js"></script>
+
+<!-- For the full list of available Crowd HTML Elements and their input/output documentation,
+      please refer to https://docs.aws.amazon.com/sagemaker/latest/dg/sms-ui-template-reference.html -->
+
+<!-- You must include crowd-form so that your task submits answers to MTurk -->
+<crowd-form answer-format="flatten-objects">
+
+    <crowd-instructions link-text="View instructions" link-type="button">
+        <short-summary>
+            <p>Paraphrase a given sequence of questions into one integrated natural question, then rate the question sequence.</p>
+        </short-summary>
+
+        <detailed-instructions>
+            <h3>Paraphrase question sequence into one question and rate the question sequence</h3>
+            <p>
+              Given a sequence of questions and the final answer, paraphrase the question sequence into one integrated and natural question that people would typically ask to get such information. Then, rate the question sequence according to its grammatical validity, coherency and likelihood of being raised.
+        </p>
+        </detailed-instructions>
+
+        <positive-example>
+            <h3>Topic</h3>
+            <p>concert singer<p>
+                
+            <h3>Question Sequence</h3>
+            <p>Result 0: Find <font color=red>concert</font>'s <font color=blue>stadium id</font> and <font color=red>stadium</font>'s <font color=blue>capacity</font> from <font color=red>stadium</font> and <font color=red>concert</font> whose <font color=red>concert</font>'s <font color=blue>stadium id</font> is equal to <font color=red>stadium</font>'s <font color=blue>stadium id</font> <br>
+            Result 1: From Result 0, find those <font color=blue>satisfying theme</font> is equal to "Wide Awake"<br></p>
+
+            <h3>Answer Sample</h3>
+            <p>Stadium_ID; Capacity <br>
+                10; 3960</p>
+
+            <h3>Response</h3>
+            <p>what's the stadium id of the stadium where 'Wide Awake' was held and what's its capacity?</p>
+        </positive-example>
+
+        <positive-example>
+            <h3>Topic</h3>
+            <p>car<p>
+                
+            <h3>Question Sequence</h3>
+            <p>Result 0: Find <font color=red>car makers</font>'s <font color=blue>country</font> and everything from <font color=red>car makers</font> and <font color=red>model list</font> whose <font color=red>model list</font>'s <font color=blue>maker</font> is equal to <font color=red>car makers</font>'s <font color=blue>id</font><br>
+                Result 1: From Result 0, for each value of <font color=blue>maker</font>, find <font color=red>car makers</font>'s <font color=blue>country</font> and the number of everything<br>
+                Result 2: present top 1 of Result 1 in descending order of the number of everything<br></p>
+
+            <h3>Answer Sample</h3>
+            <p>Country; COUNT(*)<br>
+                1; 5<br></p>
+
+            <h3>Response</h3>
+            <p>what's the country id and the number of models of the car maker owning the most models?  </p>
+        </positive-example>
+
+        <negative-example>
+            <h3>Topic</h3>
+            <p>car<p>
+                
+            <h3>Question Sequence</h3>
+            <p>Result 0: Find <font color=red>car names</font>'s <font color=blue>make id</font> from <font color=red>model list</font> and <font color=red>car names</font> whose <font color=red>car names</font>'s <font color=blue>model</font> is equal to <font color=red>model list</font>'s <font color=blue>model</font><br>
+                Result 1: From Result 0, for each value of <font color=blue>model id</font>, find the number of <font color=red>car names</font>'s <font color=blue>make id</font><br></p>
+
+            <h3>Answer Sample</h3>
+            <p>COUNT(T1.MakeId)<br>
+                6<br></p>
+
+            <h3>Response</h3>
+            <p>what are all the make ids for each model?</p>
+         </negative-example>
+    </crowd-instructions>
+
+    <p>Write how you would ask this question here:</p>
+
+    <p><strong>Topic: </strong>${topic}</p>
+    <p><strong>Question Sequence: </strong><br>${sequence}</p>
+    <p><strong>Answer Sample: </strong><br>${answer}</p>
+    <crowd-input name="question" placeholder="Type how you would ask this question here..." required></crowd-input>
+    <p>
+        <strong>Indicate to which extent do you agree with the following statements, 1 for strongly disagree and 5 for strongly agree</strong>
+        <ul>
+              <li>
+                <p>1) The question sequence does not have redundant or meaningless parts.</p>
+                <p><crowd-slider name="redundancy" min="1" max="5" required pin></crowd-slider></p>
+              </li>
+              <li>
+                <p>2) The answer this question sequence asks for has sensable meanings.</p>
+                <p><crowd-slider name="reaning" min="1" max="5" required pin></crowd-slider></p>
+              </li>
+              <li>
+                <p>3) People usually ask such questions in real world.</p>
+                <p><crowd-slider name="frequency" min="1" max="5" required pin></crowd-slider></p>
+              </li>
+              <li>
+                <p>4) This is a complex question.</p>
+                <p><crowd-slider name="frequency" min="1" max="5" required pin></crowd-slider></p>
+              </li>
+        <ul>
+    </p>
+
+</crowd-form>
