@@ -13,6 +13,7 @@
 ## How to Run
 First, download SPIDER from https://yale-lily.github.io/spider, and put it in this directory;
 Then in commmand line type:
+
 	conda create -n env3 python=3.7
 	pip install -r requirements.txt
 	python inspect_tables.py
