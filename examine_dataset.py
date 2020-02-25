@@ -11,13 +11,14 @@ with open(args.data_path, 'r') as fp:
 with open('./spider/spider/tables_mod.json', 'r') as fp:
 	tables = json.load(fp)
 
-#fp = open('train_gold.txt', 'w')
-#for entry in data:
+
+# fp = open('train_gold.txt', 'w')
+# for entry in data:
 #	fp.write('final: ' + entry['final']['query']+'\n\n')
 #	for turn in entry['interaction']:
 #		fp.write(turn['query']+'\n')
 #	fp.write('\n\n')
-#fp.close()
+# fp.close()
 
 def judge_valid(tables, pairs):
 	validity = {}
@@ -32,6 +33,7 @@ def judge_valid(tables, pairs):
 			return False
 	return True
 
+
 table_stats = {}
 num_entries = {}
 
@@ -44,7 +46,7 @@ join_cond_cmper_numbers = {}
 where_cond_numbers = {}
 where_cond_cmpers = {}
 orderby_dtypes = {}
-subq_aggr_bucket =  {}
+subq_aggr_bucket = {}
 aggr_nogroupby_bucket = {}
 aggr_union_bucket = {}
 num_of_props_queried_bucket = {}
@@ -73,9 +75,9 @@ repeated_tables_cnt = 0
 ordered_prop_selected_cnt = 0
 ordered_prop_grouped_cnt = 0
 ordered_prop_nothing_cnt = 0
-where_cv_cnt = 0 # where column<->value(s) count
-where_cc_cnt = 0 # where column<->column count
-where_ci_cnt = 0 # where column<->in count
+where_cv_cnt = 0  # where column<->value(s) count
+where_cc_cnt = 0  # where column<->column count
+where_ci_cnt = 0  # where column<->in count
 having_cond_cv_cnt = 0
 having_cond_cc_cnt = 0
 having_cond_ci_cnt = 0
@@ -107,7 +109,6 @@ same_column_multiple_wheres_cnt = 0
 exist_groupby_cnt = 0
 exist_groupby_selected_cnt = 0
 
-
 for idx, tab in enumerate(tables):
 	if tab['db_id'] not in table_stats:
 		table_stats[tab['db_id']] = {}
@@ -132,8 +133,7 @@ for entry_id, entry in enumerate(data):
 	for tab in tables:
 		if tab['db_id'] == db_id:
 			db = tab
-	assert(db is not None)
-		
+	assert (db is not None)
 
 	# about the number of tables present in a sub-query
 	num = len(entry['sql']['from']['table_units'])
@@ -157,7 +157,7 @@ for entry_id, entry in enumerate(data):
 			tableunit_bucket.append(tab[1])
 		else:
 			repeated_tables_cnt += 1
-			#print('repeated: ', entry['query'])
+	# print('repeated: ', entry['query'])
 
 	coexistable_table_pairs = []
 	columns_used_by_join = []
@@ -190,20 +190,21 @@ for entry_id, entry in enumerate(data):
 			if [idx1, idx2] not in db['foreign_keys'] and [idx2, idx1] not in db['foreign_keys']:
 				join_cond_not_fk_cnt += 1
 				if db['column_names'][idx1][1] != db['column_names'][idx2][1]:
-					#print(db['column_names'][idx1], db['column_names'][idx2])
+					# print(db['column_names'][idx1], db['column_names'][idx2])
 					join_cond_not_fk_not_same_cnt += 1
 			else:
 				coexistable_table_pairs.append([db['column_names'][idx1][0], db['column_names'][idx2][0]])
 		except Exception as e:
-			#print("!")
-			#print(cond)
+			# print("!")
+			# print(cond)
 			raise
 	num_of_columns_used_by_join += len(columns_used_by_join)
 
 	# about whether number of join conditions is exactly one less than number of tables joined in the query
-	if (len(entry['sql']['from']['conds']) - int((len(entry['sql']['from']['conds'])-1)/2) + 1) != len(entry['sql']['from']['table_units']) and len(entry['sql']['from']['table_units']) > 1:
-		#print(len(entry['sql']['from']['conds']) - int((len(entry['sql']['from']['conds'])-1)/2) + 1 - len(entry['sql']['from']['table_units']))
-		#print("join: ", entry['query'])
+	if (len(entry['sql']['from']['conds']) - int((len(entry['sql']['from']['conds']) - 1) / 2) + 1) != len(
+			entry['sql']['from']['table_units']) and len(entry['sql']['from']['table_units']) > 1:
+		# print(len(entry['sql']['from']['conds']) - int((len(entry['sql']['from']['conds'])-1)/2) + 1 - len(entry[
+		# 'sql']['from']['table_units'])) print("join: ", entry['query'])
 		join_cond_moreorless_than_tableminus1_cnt += 1
 	try:
 		num_limit = entry['sql']['limit']
@@ -226,9 +227,9 @@ for entry_id, entry in enumerate(data):
 			orderby_asc_cnt += 1
 		elif entry['sql']['orderBy'][0] == 'desc':
 			orderby_desc_cnt += 1
-		assert(len(entry['sql']['orderBy']) == 2)
+		assert (len(entry['sql']['orderBy']) == 2)
 		orderbyn = len(entry['sql']['orderBy'][1])
-		#if orderbyn > 1:
+		# if orderbyn > 1:
 		#	print(turn['query'])
 		if orderbyn not in num_orderbys:
 			num_orderbys[orderbyn] = 1
@@ -237,8 +238,8 @@ for entry_id, entry in enumerate(data):
 
 		if entry['sql']['select'][0] != False:
 			distinct_query_cnt += 1
-			#print("distinct: ", entry['question'], '; ', entry['query'])
-		assert(len(entry['sql']['select']) == 2)
+		# print("distinct: ", entry['question'], '; ', entry['query'])
+		assert (len(entry['sql']['select']) == 2)
 
 		orderby_props = []
 		selected_columns = []
@@ -273,7 +274,7 @@ for entry_id, entry in enumerate(data):
 	num_of_columns_used_by_orderby += len(columns_used_by_orderby)
 
 	if 'and' in entry['sql']['where'] and 'or' in entry['sql']['where']:
-		#print(entry['query'])
+		# print(entry['query'])
 		pass
 	# about the where condition types
 	columns_used_by_where = []
@@ -284,13 +285,13 @@ for entry_id, entry in enumerate(data):
 			else:
 				where_or_cnt += 1
 			continue
-		if cond[0] != False and cond[1] not in [8,9]:
+		if cond[0] != False and cond[1] not in [8, 9]:
 			print(entry)
 			raise AssertionError
 
 		assert cond[2][1][2] == False
 		if cond[2][2] is not None:
-			assert(cond[2][0] != 0)
+			assert (cond[2][0] != 0)
 			calculation_in_where_cnt += 1
 		cmper = cond[1]
 		if cmper not in where_cond_cmpers:
@@ -298,7 +299,7 @@ for entry_id, entry in enumerate(data):
 		else:
 			where_cond_cmpers[cmper] += 1
 		if cmper == 8:
-			assert(type(cond[3]) == type({}))
+			assert (type(cond[3]) == type({}))
 		if cmper == 9:
 			_ = cond[3].strip('"')
 			if _[0] == '%' and _[-1] == '%':
@@ -307,10 +308,10 @@ for entry_id, entry in enumerate(data):
 				like_endswith_cnt += 1
 			elif _[-1] == '%':
 				like_startswith_cnt += 1
-				#print(entry['query'], _)
+			# print(entry['query'], _)
 			else:
 				pass
-		#if cmper == 1:
+		# if cmper == 1:
 		#	print("between: ", cond)
 		try:
 			prop_dtype = db['column_types'][cond[2][1][1]]
@@ -334,14 +335,14 @@ for entry_id, entry in enumerate(data):
 			num_idcolumns_in_where += 1
 		tp = type(cond[3])
 		if cmper == 8:
-			assert(type(cond[3]) == type({}))
+			assert (type(cond[3]) == type({}))
 		if type(cond[3]) in [type(''), type(0.0), type(0), type(u'')]:
 			where_cv_cnt += 1
 		elif type(cond[3]) == type([]):
 			where_cc_cnt += 1
 			assert cond[3][2] == False
 		elif type(cond[3]) == type({}):
-			where_ci_cnt += 1			
+			where_ci_cnt += 1
 			subq = cond[3]
 			num_tables_in_subq = len(subq['from']['table_units'])
 			if num_tables_in_subq not in num_tables_in_subq_bucket:
@@ -349,15 +350,15 @@ for entry_id, entry in enumerate(data):
 			else:
 				num_tables_in_subq_bucket[num_tables_in_subq] += 1
 			if len(subq['from']['table_units']) == 2:
-				#print(entry)
+				# print(entry)
 				pass
 			subq_aggr = subq['select'][1][0][0]
 			if subq_aggr not in subq_aggr_bucket:
 				subq_aggr_bucket[subq_aggr] = 1
 			else:
 				subq_aggr_bucket[subq_aggr] += 1
-			assert(len(subq['select'][1]) ==1)
-			assert(len(subq['select'][1][0]) == 2)
+			assert (len(subq['select'][1]) == 1)
+			assert (len(subq['select'][1][0]) == 2)
 			'''
 			if len(subq['orderBy']) != 0:
 				ods = subq['orderBy'][1]
@@ -375,21 +376,21 @@ for entry_id, entry in enumerate(data):
 			if [idx1, idx2] not in db['foreign_keys'] and [idx2, idx1] not in db['foreign_keys']:
 				where_subq_not_fk_cnt += 1
 				if db['column_names'][idx1][1] != db['column_names'][idx2][1]:
-					#print(db['column_names'][idx1], db['column_names'][idx2])
+					# print(db['column_names'][idx1], db['column_names'][idx2])
 					where_subq_not_fk_not_same_cnt += 1
 		else:
 			raise AssertionError
-				
+
 	num_of_columns_used_by_where += len(columns_used_by_where)
 
-	num_where_conditions = int((len(entry['sql']['where'])+1) / 2)
+	num_where_conditions = int((len(entry['sql']['where']) + 1) / 2)
 	if num_where_conditions not in where_cond_numbers:
 		where_cond_numbers[num_where_conditions] = 1
 	else:
 		where_cond_numbers[num_where_conditions] += 1
 	if num_where_conditions == 3 and entry['sql']['where'][1] != entry['sql']['where'][3]:
-		#print(entry)
-		#print("")
+		# print(entry)
+		# print("")
 		pass
 
 	# about the columns to group by
@@ -405,7 +406,7 @@ for entry_id, entry in enumerate(data):
 	for p in entry['sql']['groupBy']:
 		assert p[0] == 0
 		columns_used_by_groupby.append(p[1])
-		assert(p[2] == False)
+		assert (p[2] == False)
 		gbdt = db['column_types'][p[1]]
 		if gbdt not in groupby_dtype_bucket:
 			groupby_dtype_bucket[gbdt] = 1
@@ -416,7 +417,7 @@ for entry_id, entry in enumerate(data):
 
 	# about the having conditions in group-by
 	num_having = len(entry['sql']['having'])
-	#if num_having == 3:
+	# if num_having == 3:
 	#	print("having: ", entry['sql']['having'])
 	if num_having not in having_numbers:
 		having_numbers[num_having] = 1
@@ -426,7 +427,7 @@ for entry_id, entry in enumerate(data):
 	if num_having > 0:
 		for cond in entry['sql']['having']:
 			if cond in ['and', 'or']:
-				#print("Double having: ", entry['query'])
+				# print("Double having: ", entry['query'])
 				continue
 			having_col = cond[2][1][1]
 			assert cond[0] is False
@@ -443,7 +444,7 @@ for entry_id, entry in enumerate(data):
 						else:
 							having_countstar_numbers_bucket[_val] += 1
 			if cond[1] == 9:
-				#print("having: ", cond[3])
+				# print("having: ", cond[3])
 				pass
 			if type(cond[3]) == type({}):
 				having_cond_ci_cnt += 1
@@ -507,35 +508,35 @@ for entry_id, entry in enumerate(data):
 		if len(entry['sql']['orderBy']) > 0:
 			orderby_at_covered_cases_cnt += 1
 			if not has_orderby_star:
-				#print("subset: ", db_id, ': ', entry['query'])
+				# print("subset: ", db_id, ': ', entry['query'])
 				pass
 	if have_grouped_by_column_selected:
 		exist_groupby_selected_cnt += 1
-	#elif num_groupby > 0:
+	# elif num_groupby > 0:
 	#	print(entry)
 	#	raise AssertionError
 
 	if has_orderby_star and num_groupby == 0:
-		#print(entry['query'])
+		# print(entry['query'])
 		pass
-	#if len(tables_in_queried_props) == 0:
+	# if len(tables_in_queried_props) == 0:
 	#	print("tables: ", entry)
 	if len(tables_in_queried_props) not in number_of_tables_in_queried_props:
 		number_of_tables_in_queried_props[len(tables_in_queried_props)] = 1
 	else:
 		number_of_tables_in_queried_props[len(tables_in_queried_props)] += 1
 
-	#if len(tables_in_queried_props) > 1:
+	# if len(tables_in_queried_props) > 1:
 	#	if not judge_valid(tables_in_queried_props, coexistable_table_pairs):
 	#		print(entry)
 	#		raise AssertionError
 	# about where-conditions and having-conditions being present at the same time
 	if len(entry['sql']['where']) > 0 and len(entry['sql']['having']) > 0:
 		where_and_having_both_present_cnt += 1
-		#print("where and having both present: ", where_and_having_both_present_cnt)
-		#print('query: ', entry['query'])
-		#print('question: ', entry['question'])
-		#print("")
+	# print("where and having both present: ", where_and_having_both_present_cnt)
+	# print('query: ', entry['query'])
+	# print('question: ', entry['question'])
+	# print("")
 
 	if entry['sql']['union'] is not None:
 		assert len(entry['sql']['orderBy']) == 0
@@ -555,99 +556,103 @@ for entry_id, entry in enumerate(data):
 		if len(entry['sql']['orderBy']) != 0 or len(entry['sql']['except']['orderBy']) != 0:
 			print(entry)
 
-
 total_entries = float(len(data))
 
 print("")
-print("total_join_conditions: ", total_join_conditions, format(total_join_conditions/total_entries, '.3f'))
-print("join_cond_not_fk_cnt: ", join_cond_not_fk_cnt, format(join_cond_not_fk_cnt/total_entries, '.3f'))
-print("join_cond_not_fk_not_same_cnt: ", join_cond_not_fk_not_same_cnt, format(join_cond_not_fk_not_same_cnt/total_entries, '.3f'))
-print("join_cond_moreorless_than_tableminus1_cnt: ", join_cond_moreorless_than_tableminus1_cnt, format(join_cond_moreorless_than_tableminus1_cnt/total_entries, '.3f'))
+print("total_join_conditions: ", total_join_conditions, format(total_join_conditions / total_entries, '.3f'))
+print("join_cond_not_fk_cnt: ", join_cond_not_fk_cnt, format(join_cond_not_fk_cnt / total_entries, '.3f'))
+print("join_cond_not_fk_not_same_cnt: ", join_cond_not_fk_not_same_cnt,
+	  format(join_cond_not_fk_not_same_cnt / total_entries, '.3f'))
+print("join_cond_moreorless_than_tableminus1_cnt: ", join_cond_moreorless_than_tableminus1_cnt,
+	  format(join_cond_moreorless_than_tableminus1_cnt / total_entries, '.3f'))
 
 print("total: ", len(data))
 for num in num_tables:
-	print(num, num_tables[num], format(num_tables[num]/total_entries, '.3f'))
+	print(num, num_tables[num], format(num_tables[num] / total_entries, '.3f'))
 
 print("categorized according to the number of order-bys: ")
 ob_sum = 0
 for num in num_orderbys:
-	print(num, num_orderbys[num], format(num_orderbys[num]/total_entries, '.3f'))
+	print(num, num_orderbys[num], format(num_orderbys[num] / total_entries, '.3f'))
 	ob_sum += num_orderbys[num]
-print("total number of order-byed sub-queries: ", ob_sum, format(ob_sum/total_entries, '.3f'))
+print("total number of order-byed sub-queries: ", ob_sum, format(ob_sum / total_entries, '.3f'))
 
 print("categorized according to the number of group-bys: ")
 gb_sum = 0
 for num in groupBy_numbers:
-	print(num, groupBy_numbers[num], format(groupBy_numbers[num]/total_entries, '.3f'))
+	print(num, groupBy_numbers[num], format(groupBy_numbers[num] / total_entries, '.3f'))
 	if num != 0:
 		gb_sum += groupBy_numbers[num]
-print("total number of group-byed sub-queries: ", gb_sum, format(gb_sum/total_entries, '.3f'))
+print("total number of group-byed sub-queries: ", gb_sum, format(gb_sum / total_entries, '.3f'))
 
 print("categorized according to the number of having conditions: ")
 hv_sum = 0
 for num in having_numbers:
-	print(num, having_numbers[num], format(having_numbers[num]/total_entries, '.3f'))
+	print(num, having_numbers[num], format(having_numbers[num] / total_entries, '.3f'))
 	if num != 0:
 		hv_sum += having_numbers[num]
-print("total number of sub-queries with having conditions: ", hv_sum, format(hv_sum/total_entries, '.3f'))
-print("having_cond_cv_cnt: ", having_cond_cv_cnt, format(having_cond_cv_cnt/total_entries, '.3f'))
-print("having_cond_cc_cnt: ", having_cond_cc_cnt, format(having_cond_cc_cnt/total_entries, '.3f'))
-print("having_cond_ci_cnt: ", having_cond_ci_cnt, format(having_cond_ci_cnt/total_entries, '.3f'))
-print("having_with_star_cnt: ", having_with_star_cnt, format(having_with_star_cnt/total_entries, '.3f'))
-print("having_with_count_star_cnt: ", having_with_count_star_cnt, format(having_with_count_star_cnt/total_entries, '.3f'))
-print("having_with_count_star_cv: ", having_with_count_star_cv, format(having_with_count_star_cv/total_entries, '.3f'))
-print("orderby_star_cnt: ", orderby_star_cnt, format(orderby_star_cnt/total_entries, '.3f'))
-print("orderby_count_star_cnt: ", orderby_count_star_cnt, format(orderby_count_star_cnt/total_entries, '.3f'))
+print("total number of sub-queries with having conditions: ", hv_sum, format(hv_sum / total_entries, '.3f'))
+print("having_cond_cv_cnt: ", having_cond_cv_cnt, format(having_cond_cv_cnt / total_entries, '.3f'))
+print("having_cond_cc_cnt: ", having_cond_cc_cnt, format(having_cond_cc_cnt / total_entries, '.3f'))
+print("having_cond_ci_cnt: ", having_cond_ci_cnt, format(having_cond_ci_cnt / total_entries, '.3f'))
+print("having_with_star_cnt: ", having_with_star_cnt, format(having_with_star_cnt / total_entries, '.3f'))
+print("having_with_count_star_cnt: ", having_with_count_star_cnt,
+	  format(having_with_count_star_cnt / total_entries, '.3f'))
+print("having_with_count_star_cv: ", having_with_count_star_cv,
+	  format(having_with_count_star_cv / total_entries, '.3f'))
+print("orderby_star_cnt: ", orderby_star_cnt, format(orderby_star_cnt / total_entries, '.3f'))
+print("orderby_count_star_cnt: ", orderby_count_star_cnt, format(orderby_count_star_cnt / total_entries, '.3f'))
 print("")
 
 print("number_of_tables_in_queried_props: ")
 for num in number_of_tables_in_queried_props:
-	print(num, ': ', number_of_tables_in_queried_props[num], format(number_of_tables_in_queried_props[num]/total_entries, '.3f'))
+	print(num, ': ', number_of_tables_in_queried_props[num],
+		  format(number_of_tables_in_queried_props[num] / total_entries, '.3f'))
 print("")
 
 print("join_cond_cmper_numbers: ")
 for num in join_cond_cmper_numbers:
-	print('	', num, join_cond_cmper_numbers[num], format(join_cond_cmper_numbers[num]/total_entries, '.3f'))
+	print('	', num, join_cond_cmper_numbers[num], format(join_cond_cmper_numbers[num] / total_entries, '.3f'))
 print("")
 
 print("where_cond_numbers: ")
 for num in where_cond_numbers:
-	print(num, where_cond_numbers[num], format(where_cond_numbers[num]/total_entries, '.3f'))
+	print(num, where_cond_numbers[num], format(where_cond_numbers[num] / total_entries, '.3f'))
 print("")
 
 print("where_cond_cmpers: ")
 for num in where_cond_cmpers:
-	print(num, where_cond_cmpers[num], format(where_cond_cmpers[num]/total_entries, '.3f'))
+	print(num, where_cond_cmpers[num], format(where_cond_cmpers[num] / total_entries, '.3f'))
 print("")
 
 print("orderby_dtypes: ")
 for dtype in orderby_dtypes:
-	print(dtype, orderby_dtypes[dtype], format(orderby_dtypes[dtype]/total_entries, '.3f'))
+	print(dtype, orderby_dtypes[dtype], format(orderby_dtypes[dtype] / total_entries, '.3f'))
 print("")
 
 print("subq_aggr_bucket: ")
 for idx in subq_aggr_bucket:
-	print(idx, subq_aggr_bucket[idx], format(subq_aggr_bucket[idx]/total_entries, '.3f'))
+	print(idx, subq_aggr_bucket[idx], format(subq_aggr_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("aggr_nogroupby_bucket: ")
 for idx in aggr_nogroupby_bucket:
-	print(idx, aggr_nogroupby_bucket[idx], format(aggr_nogroupby_bucket[idx]/total_entries, '.3f'))
+	print(idx, aggr_nogroupby_bucket[idx], format(aggr_nogroupby_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("aggr_union_bucket: ")
 for idx in aggr_union_bucket:
-	print(idx, aggr_union_bucket[idx], format(aggr_union_bucket[idx]/total_entries, '.3f'))
+	print(idx, aggr_union_bucket[idx], format(aggr_union_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("num_of_props_queried_bucket: ")
 for idx in num_of_props_queried_bucket:
-	print(idx, num_of_props_queried_bucket[idx], format(num_of_props_queried_bucket[idx]/total_entries, '.3f'))
+	print(idx, num_of_props_queried_bucket[idx], format(num_of_props_queried_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("dtypes_queried_bucket: ")
 for idx in dtypes_queried_bucket:
-	print(idx, dtypes_queried_bucket[idx], format(dtypes_queried_bucket[idx]/total_entries, '.3f'))
+	print(idx, dtypes_queried_bucket[idx], format(dtypes_queried_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("where_cond_cmpers_eachdtype: ")
@@ -662,76 +667,93 @@ print("")
 
 print("num_tables_in_subq_bucket: ")
 for idx in num_tables_in_subq_bucket:
-	print(idx, ": ", num_tables_in_subq_bucket[idx], format(num_tables_in_subq_bucket[idx]/total_entries, '.3f'))
+	print(idx, ": ", num_tables_in_subq_bucket[idx], format(num_tables_in_subq_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("limit_numbers_bucket: ")
 for idx in limit_numbers_bucket:
-	print(idx, ": ", limit_numbers_bucket[idx], format(limit_numbers_bucket[idx]/total_entries, '.3f'))
+	print(idx, ": ", limit_numbers_bucket[idx], format(limit_numbers_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("having_countstar_numbers_bucket: ")
 for idx in having_countstar_numbers_bucket:
-	print(idx, ": ", having_countstar_numbers_bucket[idx], format(having_countstar_numbers_bucket[idx]/total_entries, '.3f'))
+	print(idx, ": ", having_countstar_numbers_bucket[idx],
+		  format(having_countstar_numbers_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print("column_dtype_bucket: ")
 for idx in column_dtype_bucket:
-	print(idx, "; ", column_dtype_bucket[idx], format(column_dtype_bucket[idx]/total_entries, '.3f'))
+	print(idx, "; ", column_dtype_bucket[idx], format(column_dtype_bucket[idx] / total_entries, '.3f'))
 print("")
 
 print('groupby_dtype_bucket: ')
 for idx in groupby_dtype_bucket:
-	print(idx, "; ", groupby_dtype_bucket[idx], format(groupby_dtype_bucket[idx]/total_entries, '.3f'))
+	print(idx, "; ", groupby_dtype_bucket[idx], format(groupby_dtype_bucket[idx] / total_entries, '.3f'))
 print("")
 
-print("orderby_without_limit_cnt: ", orderby_without_limit_cnt, format(orderby_without_limit_cnt/total_entries, '.3f'))
-print("orderby_asc_cnt: ", orderby_asc_cnt, format(orderby_asc_cnt/total_entries, '.3f'))
-print("orderby_desc_cnt: ", orderby_desc_cnt, format(orderby_desc_cnt/total_entries, '.3f'))
+print("orderby_without_limit_cnt: ", orderby_without_limit_cnt,
+	  format(orderby_without_limit_cnt / total_entries, '.3f'))
+print("orderby_asc_cnt: ", orderby_asc_cnt, format(orderby_asc_cnt / total_entries, '.3f'))
+print("orderby_desc_cnt: ", orderby_desc_cnt, format(orderby_desc_cnt / total_entries, '.3f'))
 print("")
-print("where_cnt_total: ", where_cv_cnt+where_cc_cnt+where_ci_cnt, format((where_cv_cnt+where_cc_cnt+where_ci_cnt)/total_entries, '.3f'))
-print("where_cv_cnt: ", where_cv_cnt, format(where_cv_cnt/total_entries, '.3f'))
-print("where_cc_cnt: ", where_cc_cnt, format(where_cc_cnt/total_entries, '.3f'))
-print("where_ci_cnt: ", where_ci_cnt, format(where_ci_cnt/total_entries, '.3f'))
-print("where_subq_not_fk_cnt: ", where_subq_not_fk_cnt, format(where_subq_not_fk_cnt/total_entries, '.3f'))
-print("where_subq_not_fk_not_same_cnt: ", where_subq_not_fk_not_same_cnt, format(where_subq_not_fk_not_same_cnt/total_entries, '.3f'))
-print("where_and_having_both_present_cnt: ", where_and_having_both_present_cnt, format(where_and_having_both_present_cnt/total_entries, '.3f'))
-print("where_and_cnt: ", where_and_cnt, format(where_and_cnt/total_entries, '.3f'))
-print("where_or_cnt: ", where_or_cnt, format(where_or_cnt/total_entries, '.3f'))
+print("where_cnt_total: ", where_cv_cnt + where_cc_cnt + where_ci_cnt,
+	  format((where_cv_cnt + where_cc_cnt + where_ci_cnt) / total_entries, '.3f'))
+print("where_cv_cnt: ", where_cv_cnt, format(where_cv_cnt / total_entries, '.3f'))
+print("where_cc_cnt: ", where_cc_cnt, format(where_cc_cnt / total_entries, '.3f'))
+print("where_ci_cnt: ", where_ci_cnt, format(where_ci_cnt / total_entries, '.3f'))
+print("where_subq_not_fk_cnt: ", where_subq_not_fk_cnt, format(where_subq_not_fk_cnt / total_entries, '.3f'))
+print("where_subq_not_fk_not_same_cnt: ", where_subq_not_fk_not_same_cnt,
+	  format(where_subq_not_fk_not_same_cnt / total_entries, '.3f'))
+print("where_and_having_both_present_cnt: ", where_and_having_both_present_cnt,
+	  format(where_and_having_both_present_cnt / total_entries, '.3f'))
+print("where_and_cnt: ", where_and_cnt, format(where_and_cnt / total_entries, '.3f'))
+print("where_or_cnt: ", where_or_cnt, format(where_or_cnt / total_entries, '.3f'))
 
-print("ordered_prop_selected_cnt: ", ordered_prop_selected_cnt, format(ordered_prop_selected_cnt/total_entries, '.3f'))
-print("ordered_prop_grouped_cnt: ", ordered_prop_grouped_cnt, format(ordered_prop_grouped_cnt/total_entries, '.3f'))
-print("ordered_prop_nothing_cnt: ", ordered_prop_nothing_cnt, format(ordered_prop_nothing_cnt/total_entries, '.3f'))
+print("ordered_prop_selected_cnt: ", ordered_prop_selected_cnt,
+	  format(ordered_prop_selected_cnt / total_entries, '.3f'))
+print("ordered_prop_grouped_cnt: ", ordered_prop_grouped_cnt, format(ordered_prop_grouped_cnt / total_entries, '.3f'))
+print("ordered_prop_nothing_cnt: ", ordered_prop_nothing_cnt, format(ordered_prop_nothing_cnt / total_entries, '.3f'))
 
-print("repeated_tables_cnt: ", repeated_tables_cnt, format(repeated_tables_cnt/total_entries, '.3f'))
+print("repeated_tables_cnt: ", repeated_tables_cnt, format(repeated_tables_cnt / total_entries, '.3f'))
 
-print("num_bigturns_with_more_than_three_tables: ", num_bigturns_with_more_than_three_tables, format(num_bigturns_with_more_than_three_tables/total_entries, '.3f'))
+print("num_bigturns_with_more_than_three_tables: ", num_bigturns_with_more_than_three_tables,
+	  format(num_bigturns_with_more_than_three_tables / total_entries, '.3f'))
 
 print("")
-print("num_of_columns_queried: ", num_of_columns_queried, format(num_of_columns_queried/total_entries, '.3f'))
-print("num_of_columns_used_by_join: ", num_of_columns_used_by_join, format(num_of_columns_used_by_join/total_entries, '.3f'))
-print("num_of_join_columns_queried: ", num_of_join_columns_queried, format(num_of_join_columns_queried/total_entries, '.3f'))
-print("num_of_columns_used_by_orderby: ", num_of_columns_used_by_orderby, format(num_of_columns_used_by_orderby/total_entries, '.3f'))
-print("num_of_orderby_columns_queried: ", num_of_orderby_columns_queried, format(num_of_orderby_columns_queried/total_entries, '.3f'))
-print("num_of_columns_used_by_groupby: ", num_of_columns_used_by_groupby, format(num_of_columns_used_by_groupby/total_entries, '.3f'))
-print("num_of_groupby_columns_queried: ", num_of_groupby_columns_queried, format(num_of_groupby_columns_queried/total_entries, '.3f'))
-print("num_of_columns_used_by_where: ", num_of_columns_used_by_where, format(num_of_columns_used_by_where/total_entries, '.3f'))
-print("num_of_where_columns_queried: ", num_of_where_columns_queried, format(num_of_where_columns_queried/total_entries, '.3f'))
+print("num_of_columns_queried: ", num_of_columns_queried, format(num_of_columns_queried / total_entries, '.3f'))
+print("num_of_columns_used_by_join: ", num_of_columns_used_by_join,
+	  format(num_of_columns_used_by_join / total_entries, '.3f'))
+print("num_of_join_columns_queried: ", num_of_join_columns_queried,
+	  format(num_of_join_columns_queried / total_entries, '.3f'))
+print("num_of_columns_used_by_orderby: ", num_of_columns_used_by_orderby,
+	  format(num_of_columns_used_by_orderby / total_entries, '.3f'))
+print("num_of_orderby_columns_queried: ", num_of_orderby_columns_queried,
+	  format(num_of_orderby_columns_queried / total_entries, '.3f'))
+print("num_of_columns_used_by_groupby: ", num_of_columns_used_by_groupby,
+	  format(num_of_columns_used_by_groupby / total_entries, '.3f'))
+print("num_of_groupby_columns_queried: ", num_of_groupby_columns_queried,
+	  format(num_of_groupby_columns_queried / total_entries, '.3f'))
+print("num_of_columns_used_by_where: ", num_of_columns_used_by_where,
+	  format(num_of_columns_used_by_where / total_entries, '.3f'))
+print("num_of_where_columns_queried: ", num_of_where_columns_queried,
+	  format(num_of_where_columns_queried / total_entries, '.3f'))
 print("")
-print("num_star_queried: ", num_star_queried, format(num_star_queried/total_entries, '.3f'))
-print("num_star_queried_with_count: ", num_star_queried_with_count, format(num_star_queried_with_count/total_entries, '.3f'))
-print("num_idcolumns_in_where: ", num_idcolumns_in_where, format(num_idcolumns_in_where/total_entries, '.3f'))
-print("num_subq_in_join_tables: ", num_subq_in_join_tables, format(num_subq_in_join_tables/total_entries, '.3f'))
-print("calculation_in_where_cnt: ", calculation_in_where_cnt, format(calculation_in_where_cnt/total_entries, '.3f'))
-print("distinct_query_cnt: ", distinct_query_cnt, format(distinct_query_cnt/total_entries, '.3f'))
-print("orderby_at_covered_cases_cnt: ", orderby_at_covered_cases_cnt, format(orderby_at_covered_cases_cnt/total_entries, '.3f'))
-print("like_contains_cnt: ", like_contains_cnt, format(like_contains_cnt/total_entries, '.3f'))
-print("like_startswith_cnt: ", like_startswith_cnt, format(like_startswith_cnt/total_entries, '.3f'))
-print("like_endswith_cnt: ", like_endswith_cnt, format(like_endswith_cnt/total_entries, '.3f'))
-print("same_column_multiple_wheres_cnt: ", same_column_multiple_wheres_cnt, format(same_column_multiple_wheres_cnt/total_entries, '.3f'))
+print("num_star_queried: ", num_star_queried, format(num_star_queried / total_entries, '.3f'))
+print("num_star_queried_with_count: ", num_star_queried_with_count,
+	  format(num_star_queried_with_count / total_entries, '.3f'))
+print("num_idcolumns_in_where: ", num_idcolumns_in_where, format(num_idcolumns_in_where / total_entries, '.3f'))
+print("num_subq_in_join_tables: ", num_subq_in_join_tables, format(num_subq_in_join_tables / total_entries, '.3f'))
+print("calculation_in_where_cnt: ", calculation_in_where_cnt, format(calculation_in_where_cnt / total_entries, '.3f'))
+print("distinct_query_cnt: ", distinct_query_cnt, format(distinct_query_cnt / total_entries, '.3f'))
+print("orderby_at_covered_cases_cnt: ", orderby_at_covered_cases_cnt,
+	  format(orderby_at_covered_cases_cnt / total_entries, '.3f'))
+print("like_contains_cnt: ", like_contains_cnt, format(like_contains_cnt / total_entries, '.3f'))
+print("like_startswith_cnt: ", like_startswith_cnt, format(like_startswith_cnt / total_entries, '.3f'))
+print("like_endswith_cnt: ", like_endswith_cnt, format(like_endswith_cnt / total_entries, '.3f'))
+print("same_column_multiple_wheres_cnt: ", same_column_multiple_wheres_cnt,
+	  format(same_column_multiple_wheres_cnt / total_entries, '.3f'))
 print("exist_groupby_cnt: ", exist_groupby_cnt)
 print("exist_groupby_selected_cnt: ", exist_groupby_selected_cnt)
-
 
 for key in table_stats:
 	if key not in num_entries:

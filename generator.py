@@ -103,7 +103,7 @@ tableid = 0
 propertyid = 0
 
 ITR_TRY = 1000
-NAME_PAIR_WEIGHT = 0.2
+NAME_PAIR_WEIGHT = 0.1
 MAX_VALUE_ENTRIES = 500
 
 # test for git commit
@@ -2086,7 +2086,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			_prop.set_aggr(3)
 			prev_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props, having_cdt=having_cdt)
+						group_props=groupby_props)
 			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps)
 			prev_res = cursor.execute(prev_qrynp.z).fetchall()
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
@@ -2097,7 +2097,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			if len(res) == 0 or len(res) == len(prev_res):
 				if len(res) == len(prev_res):
 					pass
-				having_cdt = None
+				else:
+					having_cdt = None
 
 			# set corresponding table_activated to True
 			if having_cdt is not None:
@@ -2712,6 +2713,7 @@ def format_sql_spider(np):
 	for item in np.group_props:
 		res['groupBy'].append([0, item.meta_idx + 1, False])
 	if np.having_cdt is not None:
+		print("!")
 		assert np.having_cdt.cmper.negative is False
 		hvg = [False, np.having_cdt.cmper.index, [0, [int(np.having_cdt.left.aggr), np.having_cdt.left.meta_idx + 1,
 													  np.having_cdt.left.distinct], None]]
