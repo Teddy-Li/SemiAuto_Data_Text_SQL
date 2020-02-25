@@ -16,6 +16,7 @@ from collections import defaultdict
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--db_id', type=int, default=1)
+parser.add_argument('-v', '--verbose', type=bool, default=False, help='print verbose info')
 args = parser.parse_args()
 db_ids_to_ignore = [124, 131]
 
@@ -502,7 +503,7 @@ def construct_cc_where_cdt(available_prop_ids, propertynps, prop_mat, use_aggr_f
 
 # sub-queries can be either around properties with foreign key relations or same names, but rarely anything else
 def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat, prop_rels,
-						   use_aggr_for_left_prop=False, cursor=None, no_negative=False):
+						   use_aggr_for_left_prop=False, cursor=None, no_negative=False, verbose=False):
 	# only allow those with actual values
 	all_prop_ids = []
 	for i in range(len(propertynps)):
@@ -541,7 +542,7 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 	right_subq_np, right_subq_qrynp = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels,
 													is_recursive=True,
 													specific_props=[prop4right_subq], cursor=cursor,
-													require_singlereturn=(cmper.index != 8))
+													require_singlereturn=(cmper.index != 8), print_verbose=verbose)
 
 	if use_aggr_for_left_prop:
 		# assign different distributions for aggregators according to the property dtypes
@@ -1921,7 +1922,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		# if already is a recursed function instance, don't dive deeper again
 		if rho < 0.15 and is_recursive is False and not ci_occured_flag:
 			current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													   prop_rels, cursor=cursor)
+													   prop_rels, cursor=cursor, verbose=print_verbose)
 			if current_where_cdt is not None:
 				ci_occured_flag = True
 			where_has_same_entity = False
@@ -2073,7 +2074,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 					having_usable_prop_ids.append(idx)
 			if rho < 0.03:
 				having_cdt = construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													prop_rels, True, cursor=cursor, no_negative=True)
+													prop_rels, True, cursor=cursor, no_negative=True, verbose=print_verbose)
 			elif rho < 0.15:
 				having_cdt = construct_cv_where_cdt(having_usable_prop_ids, propertynps, True, no_negative=True)
 			elif rho < 0.4:
@@ -2713,7 +2714,6 @@ def format_sql_spider(np):
 	for item in np.group_props:
 		res['groupBy'].append([0, item.meta_idx + 1, False])
 	if np.having_cdt is not None:
-		print("!")
 		assert np.having_cdt.cmper.negative is False
 		hvg = [False, np.having_cdt.cmper.index, [0, [int(np.having_cdt.left.aggr), np.having_cdt.left.meta_idx + 1,
 													  np.having_cdt.left.distinct], None]]
@@ -2844,7 +2844,7 @@ def format_query_to_spider(np, qrynp, database_name, sample, headers):
 	return qry_formatted
 
 
-def generate_queries(database_idx):
+def generate_queries(database_idx, verbose):
 	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, valid_database, conn, crsr, num_queries = build_spider_dataset(
 		database_idx)
 	if not valid_database:
@@ -2873,7 +2873,7 @@ def generate_queries(database_idx):
 			print(query_idx)
 		should_dump = False
 		np, qrynp = scratch_build(typenps, propertynps, type_matrix, property_matrix, prop_rels, finalize_sequence=True,
-								  cursor=crsr)
+								  cursor=crsr, print_verbose=verbose)
 		try:
 			qry_returned = crsr.execute(qrynp.z).fetchall()
 		except sqlite3.OperationalError as e:
@@ -2928,12 +2928,12 @@ def generate_queries(database_idx):
 	return saved_results, dumped_results, saved_gold, dumped_gold, saved_canonical, dumped_canonical
 
 
-def main(idx):
+def main(idx, verbose):
 	# generate queries for English
 	if idx in db_ids_to_ignore:
 		print("database number %d ignored!" % idx)
 	print("began generating query entries for database $ {0} $".format(idx))
-	res_saved, res_dumped, gold_saved, gold_dumped, canonical_saved, canonical_dumped = generate_queries(idx)
+	res_saved, res_dumped, gold_saved, gold_dumped, canonical_saved, canonical_dumped = generate_queries(idx, verbose)
 	with open(SAVE_PATH + 'gold_saved.sql', 'a') as fp:
 		for line in gold_saved:
 			fp.write(line + '\n')
@@ -2970,12 +2970,12 @@ def main(idx):
 		json.dump(f, fp, indent=4)
 
 
-def debug():
+def debug(verbose):
 	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(51)
 	assert valid
 	fp = open('./result_0131.jsonl', 'w')
 	for i in range(ITR_TRY):
-		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, finalize_sequence=True, cursor=crsr, print_verbose=True)
+		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, finalize_sequence=True, cursor=crsr, print_verbose=verbose)
 
 		print('SQL: ', qrynp.z)
 		print("Full question: ", qrynp.c_chinese)
@@ -2998,5 +2998,5 @@ def debug():
 
 if __name__ == '__main__':
 	idx = args.db_id
-	main(idx)
-	# debug()
+	main(idx, args.verbose)
+	# debug(args.verbose)
