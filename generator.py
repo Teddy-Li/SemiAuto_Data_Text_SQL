@@ -79,19 +79,19 @@ def cut_value_for_like(v, mode):
 		length = min(length, len(v) - start_point)
 		if length == 0:
 			length = 1
-		slice = v[start_point:start_point + length]
-		slice = '%' + slice + '%'
+		_slice = v[start_point:start_point + length]
+		_slice = '%' + _slice + '%'
 	elif mode == 'head':
 		length = min(length, len(v))
-		slice = v[:length]
-		slice = slice + '%'
+		_slice = v[:length]
+		_slice = _slice + '%'
 	elif mode == 'tail':
 		length = min(length, len(v))
-		slice = v[len(v) - length:]
-		slice = '%' + slice
+		_slice = v[len(v) - length:]
+		_slice = '%' + _slice
 	else:
 		raise AssertionError
-	return slice
+	return _slice
 
 
 transform2distribution = transform2distribution_proportional
@@ -106,6 +106,7 @@ propertyid = 0
 ITR_TRY = 1000
 NAME_PAIR_WEIGHT = 0.1
 MAX_VALUE_ENTRIES = 500
+MAX_RETURN_ENTRIES = 1000
 
 # test for git commit
 
@@ -137,8 +138,8 @@ CMP_DISTS = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 1
 # convert into default_dicts in order to be compatible with more database dtypes
 CMP_DISTS = defaultdict(lambda: [0, 1, 0, 0, 0, 0, 1, 1, 0], CMP_DISTS)
 
-AGGR_DISTS = {'int': transform2distribution_proportional([0, 1, 1, 5, 1, 2]),
-			  'double': transform2distribution_proportional([0, 1, 1, 5, 1, 2]),
+AGGR_DISTS = {'int': transform2distribution_proportional([0, 1, 1, 2.5, 1, 2]),
+			  'double': transform2distribution_proportional([0, 1, 1, 2.5, 1, 2]),
 			  'varchar(1000)': transform2distribution_proportional([0, 0, 0, 1, 0, 0]),
 			  'id': transform2distribution_proportional([0, 0, 0, 1, 0, 0]),
 			  'bit': transform2distribution_proportional([0, 0, 0, 1, 0, 0]),
@@ -1800,6 +1801,7 @@ num_tables_distribution = {False: transform2distribution_proportional(numpy.arra
 num_wheres_distribution = {False: transform2distribution_proportional(numpy.array([3000., 3000., 800., 400, 1.])),
 						   True: transform2distribution_proportional(numpy.array([4., 1.5, 0.2,
 																				  0.01, 0.]))}  # padded each number with 10 to allow extreme queries with 4 where-conditions
+num_selected_distribution = transform2distribution_proportional(numpy.array([0., 4600., 1900., 400., 50.]))
 
 AGGR_SUBQDIST = transform2distribution_proportional(
 	numpy.array([310., 66., 44., 0., 0., 90.]))  # only allow max, min, avg
@@ -1906,12 +1908,14 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# c-v where conditions and c-i where conditions have a proportion of 7 to 1
 	where_cnt = 0
 
-	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts)
+	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
+				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])], orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 	prev_res = cursor.execute(cur_qrynp.z).fetchall()
 	ci_occured_flag = False
 	_turn_cnter = 0
 	while where_cnt < num_wheres:
+		cur_is_ci_flag = False
 		_turn_cnter += 1
 		if _turn_cnter > 15 or res_is_single:
 			num_wheres = where_cnt
@@ -1923,6 +1927,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 													   prop_rels, cursor=cursor, verbose=print_verbose)
 			if current_where_cdt is not None:
 				ci_occured_flag = True
+				cur_is_ci_flag = True
 			where_has_same_entity = False
 		elif rho < 0.25 and where_cnt == num_wheres - 2:
 			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
@@ -1958,7 +1963,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 		# $execution-guidance
 		cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
-					cdts=where_cdts, cdt_linkers=where_linkers)
+					cdts=where_cdts, cdt_linkers=where_linkers, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+					orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 
 		res = cursor.execute(cur_qrynp.z).fetchall()
@@ -1975,6 +1981,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				where_linkers = where_linkers[:-1]
 			if where_has_same_entity:
 				where_linkers = where_linkers[:-1]
+			if cur_is_ci_flag:
+				ci_occured_flag = False
 			continue
 		# execution-guidance$
 		if where_has_same_entity:
@@ -2138,7 +2146,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		props2query = [copy.deepcopy(STAR_PROP)]
 		props2query[0].table_id = table_ids
 	else:
-		num_props2query = min(math.ceil(abs(random.gauss(0, 1))), len(available_prop_ids))
+		num_props2query = numpy.random.choice([0, 1, 2, 3, 4], p=num_selected_distribution)
+		num_props2query = min(num_props2query, len(available_prop_ids))
 		query_probabilities = calc_forquery_distribution(available_prop_ids, groupby_prop_ids, propertynps)
 		propids2query = []
 		if groupby_prop_ids is not None and len(groupby_prop_ids) > 0:
@@ -2276,9 +2285,11 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# if all returned entries are the same, don't order by this column
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-				having_cdt=having_cdt)
+				having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])], orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	res = cursor.execute(cur_qrynp.z).fetchall()
+	if len(res) == 1000:
+		print("!!!!!")
 	headers = [tup[0] for tup in cursor.description]
 	cur_tid_index = 0
 	changed_table = False
