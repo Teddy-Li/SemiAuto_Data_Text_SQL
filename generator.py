@@ -3031,5 +3031,5 @@ def debug(verbose):
 
 if __name__ == '__main__':
 	idx = args.db_id
-	# main(idx, args.verbose)
-	debug(True)
+	main(idx, args.verbose)
+	# debug(True)
