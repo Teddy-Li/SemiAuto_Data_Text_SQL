@@ -1,4 +1,6 @@
-verbose = $1
+#!/bin/bash
+
+verbose=$1
 
 source activate env3
 rm -r saved_results
