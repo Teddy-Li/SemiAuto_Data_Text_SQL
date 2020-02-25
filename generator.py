@@ -1913,9 +1913,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	_turn_cnter = 0
 	while where_cnt < num_wheres:
 		_turn_cnter += 1
-		if _turn_cnter > 20:
-			num_wheres = where_cnt
-		if res_is_single:
+		if _turn_cnter > 15 or res_is_single:
 			num_wheres = where_cnt
 			break
 		rho = random.random()
@@ -2246,6 +2244,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		need_orderby_covered = True
 
 	orderby_available_props = []
+
 	if specific_props is None or is_recursive:
 		for prop_id in available_prop_ids:
 			prop = copy.deepcopy(propertynps[prop_id])
@@ -2264,29 +2263,52 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			if veto:
 				continue
 			if prop.dtype in ORDERBY_DTYPES:
-				# if all returned entries are the same, don't order by this column
-				cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-								cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-								having_cdt=having_cdt)
-				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
-				res = cursor.execute(cur_qrynp.z).fetchall()
-				if not all_the_same(res):
-					orderby_available_props.append(prop)
+				orderby_available_props.append(prop)
 	else:
 		for prop in props2query:
 			if prop.dtype == 'star':
 				continue
 			if num_groupbys == 0 and prop.aggr != 0:
 				continue
-
-			# if all returned entries are the same, don't order by this column
-			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-						having_cdt=having_cdt)
-			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
-			res = cursor.execute(cur_qrynp.z).fetchall()
-			if not all_the_same(res):
+			if prop.dtype in ORDERBY_DTYPES:
 				orderby_available_props.append(copy.deepcopy(prop))
+
+	# if all returned entries are the same, don't order by this column
+	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
+				cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
+				having_cdt=having_cdt)
+	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
+	res = cursor.execute(cur_qrynp.z).fetchall()
+	headers = [tup[0] for tup in cursor.description]
+	cur_tid_index = 0
+	changed_table = False
+	h_idx = 0
+	while h_idx < len(headers):
+		h = headers[h_idx]
+		found = False
+		for p in propertynps:
+			if p.z.format('') == h and p.table_id == table_ids[cur_tid_index]:
+				found = True
+				pid = p.overall_idx
+				if pid not in available_prop_ids:
+					break
+				vals = []
+				for ent in res:
+					assert len(ent) == len(headers)
+					vals.append(ent[h_idx:h_idx+1])
+				if all_the_same(vals):
+					available_prop_ids.remove(pid)
+				break
+		if found:
+			h_idx += 1
+			changed_table = False
+		else:
+			assert not changed_table
+			cur_tid_index += 1
+			changed_table = True
+
+	if print_verbose:
+		print("columns available for order-by picked!")
 
 	for cond in where_cdts:
 		# if the left-side column in this condition is involved in a '=' condition (the aggr for left-side column in
@@ -2375,9 +2397,10 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 						having_cdt=having_cdt)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 			res = cursor.execute(cur_qrynp.z).fetchall()
-			limit_dist = limit_dist[:len(res)+1]
+			len_res_prime = max(len(res), 1)
+			limit_dist = limit_dist[:len_res_prime+1]
 
-			limit = random.choices(range(min(len(res)+1, 101)), weights=limit_dist)[0]
+			limit = random.choices(range(min(len_res_prime+1, 101)), weights=limit_dist)[0]
 		else:
 			limit = None
 
@@ -2971,7 +2994,7 @@ def main(idx, verbose):
 
 
 def debug(verbose):
-	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(51)
+	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(1)
 	assert valid
 	fp = open('./result_0131.jsonl', 'w')
 	for i in range(ITR_TRY):
@@ -2999,4 +3022,4 @@ def debug(verbose):
 if __name__ == '__main__':
 	idx = args.db_id
 	main(idx, args.verbose)
-	# debug(args.verbose)
+	# debug(True)
