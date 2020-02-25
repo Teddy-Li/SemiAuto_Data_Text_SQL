@@ -2298,7 +2298,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		h = headers[h_idx]
 		found = False
 		for p in propertynps:
-			if p.z.format('') == h and p.table_id == table_ids[cur_tid_index]:
+			if p.z.format('').strip('[').strip(']') == h and p.table_id == table_ids[cur_tid_index]:
 				found = True
 				pid = p.overall_idx
 				if pid not in available_prop_ids:
@@ -3005,7 +3005,7 @@ def main(idx, verbose):
 
 
 def debug(verbose):
-	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(1)
+	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(0)
 	assert valid
 	fp = open('./result_0131.jsonl', 'w')
 	for i in range(ITR_TRY):
@@ -3032,5 +3032,5 @@ def debug(verbose):
 
 if __name__ == '__main__':
 	idx = args.db_id
-	main(idx, args.verbose)
-	# debug(True)
+	# main(idx, args.verbose)
+	debug(True)
