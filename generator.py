@@ -1794,7 +1794,7 @@ CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' bet
 		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9)]
 
 # these distributions are naturally proportional
-num_tables_distribution = {False: transform2distribution_proportional(numpy.array([4361., 3500., 22., 6.])),
+num_tables_distribution = {False: transform2distribution_proportional(numpy.array([4361., 3200., 22., 6.])),
 						   True: transform2distribution_proportional(numpy.array([459., 51., 1., 0.01]))}
 num_wheres_distribution = {False: transform2distribution_proportional(numpy.array([3200., 3000., 600., 400, 1.])),
 						   True: transform2distribution_proportional(numpy.array([4., 1.5, 0.2,
