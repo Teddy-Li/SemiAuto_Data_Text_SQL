@@ -3,8 +3,8 @@ import argparse
 import os
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-p', '--path', type=str, help='path')
-parser.add_argument('-t', '--table_p', type=str, default='../spider/spider/tables_mod.json')
+parser.add_argument('-p', '--path', type=str, default='car_1', help='path')
+parser.add_argument('-t', '--table_p', type=str, default='./spider/spider/tables_mod.json')
 parser.add_argument('-f', '--start_from', type=int, default=0, help='start from')
 args = parser.parse_args()
 
