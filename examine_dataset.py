@@ -466,7 +466,7 @@ for entry_id, entry in enumerate(data):
 		if prop[1][1][2] != False and prop[0] != 3:
 			print(entry)
 			raise AssertionError
-		aggr_id = prop[1][0]
+		aggr_id = prop[0]
 		prop_id = prop[1][1][1]
 		if prop_id not in columns_used_by_groupby:
 			selected_subset_of_groupby = False

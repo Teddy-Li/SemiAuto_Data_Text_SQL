@@ -2194,7 +2194,6 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 							group_props=groupby_props, having_cdt=having_cdt)
 				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 				res = cursor.execute(cur_qrynp.z).fetchall()
-
 				if len(res) > 1 or rho < 0.05:
 					aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)), p=AGGR_DISTS[chosen_prop.dtype])
 					chosen_prop.set_aggr(aggr_id)
@@ -3032,5 +3031,5 @@ def debug(verbose):
 
 if __name__ == '__main__':
 	idx = args.db_id
-	main(idx, args.verbose)
-	# debug(True)
+	# main(idx, args.verbose)
+	debug(True)
