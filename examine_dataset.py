@@ -683,7 +683,7 @@ print("")
 
 print("column_dtype_bucket: ")
 for idx in column_dtype_bucket:
-	print(idx, "; ", column_dtype_bucket[idx], format(column_dtype_bucket[idx] / total_entries, '.3f'))
+	print(idx, "; ", column_dtype_bucket[idx])
 print("")
 
 print('groupby_dtype_bucket: ')

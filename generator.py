@@ -104,7 +104,7 @@ tableid = 0
 propertyid = 0
 
 ITR_TRY = 1000
-NAME_PAIR_WEIGHT = 0.1
+NAME_PAIR_WEIGHT = 0.3
 MAX_VALUE_ENTRIES = 500
 MAX_RETURN_ENTRIES = 1000
 
@@ -126,7 +126,7 @@ ALL_DTYPES = ['int', 'varchar(1000)', 'double', 'id', 'datetime', 'bit', 'bool',
 # 1 -> between; 2 -> =; 3 -> >; 4 -> <; 5 -> >=; 6 -> <=; 7 -> !=; 8 -> in; 9 -> like
 CMP_DISTS = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 18, 7, 80, 0]),
 			 'double': transform2distribution_proportional([24, 16, 190, 65, 12, 4, 4, 2, 0]),
-			 'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 30, 164]),
+			 'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 30, 190]),
 			 'id': transform2distribution_proportional([2, 63, 2, 0, 0, 0, 4, 166, 0]),
 			 'bit': transform2distribution_proportional([0, 2, 0, 0, 0, 0, 0, 0, 0]),
 			 'datetime': transform2distribution_proportional([2, 8, 22, 21, 4, 4, 0, 0, 4]),
@@ -348,6 +348,8 @@ def choose_proppair_for_cdt(left_available_prop_ids, right_available_prop_ids, p
 		for j in right_candidate_ids:
 			if prop_mat[i, j] == 0 or i == j or (is_comparable(propertynps[i].dtype, propertynps[j].dtype) is False):
 				cand_prop_mat.append(-1000000)
+			elif propertynps[i].dtype == 'id' and propertynps[j].dtype == 'id':
+				cand_prop_mat.append(prop_mat[i, j]*0.3)
 			else:
 				cand_prop_mat.append(prop_mat[i, j])
 	try:
@@ -371,7 +373,7 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 			if propertynps[prop_id].dtype in UNLIKELY_COND_DTYPES:
 				scores[idx] = -10000
 			elif propertynps[prop_id].dtype == 'id':
-				scores[idx] *= 0.5
+				scores[idx] *= 0.3
 		# explicitly use softmax to convert into a distribution
 		scores = transform2distribution_softmax(numpy.array(scores))
 		chosen_prop_id = numpy.random.choice(available_prop_ids, p=scores)
@@ -1922,21 +1924,21 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			break
 		rho = random.random()
 		# if already is a recursed function instance, don't dive deeper again
-		if rho < 0.15 and is_recursive is False and not ci_occured_flag:
+		if rho < 0.2 and is_recursive is False and not ci_occured_flag:
 			current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
 													   prop_rels, cursor=cursor, verbose=print_verbose)
 			if current_where_cdt is not None:
 				ci_occured_flag = True
 				cur_is_ci_flag = True
 			where_has_same_entity = False
-		elif rho < 0.25 and where_cnt == num_wheres - 2:
+		elif rho < 0.3 and where_cnt == num_wheres - 2:
 			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
 			where_cdts.append(current_where_cdt)
 			where_linkers.append('or')
 			where_has_same_entity = True
 			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps,
 													   assigned_prop=current_where_cdt.left)
-		elif rho < 0.99:
+		elif rho < 0.95:
 			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
 			where_has_same_entity = False
 		else:
@@ -2349,7 +2351,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		for i, p1 in enumerate(orderby_available_props):
 			for p2 in props2query:
 				if p1.overall_idx == p2.overall_idx:
-					ob_probs[i] += 1
+					ob_probs[i] += 1.7
 		ob_probs = transform2distribution_proportional(ob_probs)
 		orderby_props_raw = numpy.random.choice(orderby_available_props, num_orderbys, p=ob_probs, replace=False)
 
