@@ -340,8 +340,8 @@ for entry_id, entry in enumerate(data):
 			where_cv_cnt += 1
 		elif isinstance(cond[3], list):
 			where_cc_cnt += 1
+			print(cond)
 			if cond[3][2] is not False:
-				print(cond)
 				raise AssertionError
 		elif isinstance(cond[3], dict):
 			where_ci_cnt += 1
