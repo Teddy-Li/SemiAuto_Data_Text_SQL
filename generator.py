@@ -2815,7 +2815,7 @@ def format_sql_spider(np):
 			listed_cond.append(format_sql_spider(cond.right.np))
 			listed_cond.append(None)
 		elif isinstance(cond.right, PROPERTYNP):
-			listed_cond.append([0, [0, cond.right.meta_idx + 1, False], None])
+			listed_cond.append([0, cond.right.meta_idx + 1, False])
 			listed_cond.append(None)
 		else:
 			if not isinstance(cond.right, list) and not isinstance(cond.right, numpy.ndarray):
