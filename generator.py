@@ -3032,6 +3032,29 @@ def debug(verbose):
 
 
 if __name__ == '__main__':
+	begin = time.time()
 	idx = args.db_id
 	main(idx, args.verbose)
 	# debug(True)
+	end = time.time()
+
+	# display the time spent in this run of query-generation
+	dur = end - begin
+	string = 'Time spent: '
+	if dur > 3600:
+		string += '%d hour' % int(dur/3600)
+		if dur > 7200:
+			string += 's, '
+		else:
+			string += ', '
+	dur = dur % 3600
+	if dur > 60:
+		string += '%d minute' % int(dur/60)
+		if dur > 120:
+			string += 's, '
+		else:
+			string += ', '
+	dur = dur % 60
+	string += '%d seconds' % int(dur)
+	print(string)
+	print("")
