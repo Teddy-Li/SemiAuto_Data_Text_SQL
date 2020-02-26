@@ -542,7 +542,9 @@ for entry_id, entry in enumerate(data):
 
 	if entry['sql']['union'] is not None:
 		assert len(entry['sql']['orderBy']) == 0
-		assert len(entry['sql']['union']['orderBy']) == 0
+		if len(entry['sql']['union']['orderBy']) != 0:
+			print(entry)
+			raise AssertionError
 		for prop in entry['sql']['select'][1]:
 			aggr_union = prop[0]
 			if aggr_union not in aggr_union_bucket:
