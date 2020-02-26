@@ -2237,6 +2237,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		num_orderbys = 1
 	elif is_recursive:
 		num_orderbys = 0
+	elif specific_props is not None and len(specific_props) > 0:
+		num_orderbys = 0
 	elif rho > 3.4:
 		num_orderbys = int(rho)  # allow for a tiny possibility of having more than 3 orderby properties
 	elif rho > 2.6:
