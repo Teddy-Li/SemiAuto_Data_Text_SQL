@@ -335,13 +335,15 @@ for entry_id, entry in enumerate(data):
 			num_idcolumns_in_where += 1
 		tp = type(cond[3])
 		if cmper == 8:
-			assert (type(cond[3]) == type({}))
+			assert isinstance(cond[3], dict)
 		if type(cond[3]) in [type(''), type(0.0), type(0), type(u'')]:
 			where_cv_cnt += 1
-		elif type(cond[3]) == type([]):
+		elif isinstance(cond[3], list):
 			where_cc_cnt += 1
-			assert cond[3][2] == False
-		elif type(cond[3]) == type({}):
+			if cond[3][2] is not False:
+				print(cond)
+				raise AssertionError
+		elif isinstance(cond[3], dict):
 			where_ci_cnt += 1
 			subq = cond[3]
 			num_tables_in_subq = len(subq['from']['table_units'])
