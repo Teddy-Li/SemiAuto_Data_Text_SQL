@@ -340,7 +340,6 @@ for entry_id, entry in enumerate(data):
 			where_cv_cnt += 1
 		elif isinstance(cond[3], list):
 			where_cc_cnt += 1
-			print(cond)
 			if cond[3][2] is not False:
 				raise AssertionError
 		elif isinstance(cond[3], dict):
@@ -506,6 +505,9 @@ for entry_id, entry in enumerate(data):
 			num_of_groupby_columns_queried += 1
 		if prop_id in columns_used_by_where:
 			num_of_where_columns_queried += 1
+	if have_grouped_by_column_selected and not selected_subset_of_groupby:
+		print(entry)
+		raise AssertionError
 	if selected_subset_of_groupby:
 		if len(entry['sql']['orderBy']) > 0:
 			orderby_at_covered_cases_cnt += 1
@@ -554,11 +556,13 @@ for entry_id, entry in enumerate(data):
 
 	if entry['sql']['intersect'] is not None:
 		if len(entry['sql']['orderBy']) != 0 or len(entry['sql']['intersect']['orderBy']) != 0:
-			print(entry)
+			#print(entry)
+			pass
 
 	if entry['sql']['except'] is not None:
 		if len(entry['sql']['orderBy']) != 0 or len(entry['sql']['except']['orderBy']) != 0:
-			print(entry)
+			#print(entry)
+			pass
 
 total_entries = float(len(data))
 
