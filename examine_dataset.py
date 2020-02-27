@@ -1,3 +1,4 @@
+import copy
 import json
 import argparse
 
@@ -462,6 +463,7 @@ for entry_id, entry in enumerate(data):
 		num_of_props_queried_bucket[num_of_props_queried] += 1
 	selected_subset_of_groupby = True
 	have_grouped_by_column_selected = False
+	unselected_groupby_columns = copy.copy(columns_used_by_groupby)
 	# about the tables of properties queried
 	for prop in entry['sql']['select'][1]:
 		if prop[1][1][2] != False and prop[0] != 3:
@@ -469,6 +471,8 @@ for entry_id, entry in enumerate(data):
 			raise AssertionError
 		aggr_id = prop[0]
 		prop_id = prop[1][1][1]
+		if prop_id in unselected_groupby_columns:
+			unselected_groupby_columns.remove(prop_id)
 		if prop_id not in columns_used_by_groupby:
 			selected_subset_of_groupby = False
 		if db['column_types'][prop_id] not in queried_aggrs_eachdtype:
@@ -505,7 +509,7 @@ for entry_id, entry in enumerate(data):
 			num_of_groupby_columns_queried += 1
 		if prop_id in columns_used_by_where:
 			num_of_where_columns_queried += 1
-	if have_grouped_by_column_selected and not selected_subset_of_groupby:
+	if have_grouped_by_column_selected and len(unselected_groupby_columns) > 0:
 		print(entry)
 		raise AssertionError
 	if selected_subset_of_groupby:
