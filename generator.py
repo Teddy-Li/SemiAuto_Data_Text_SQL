@@ -2155,10 +2155,11 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		if groupby_prop_ids is not None and len(groupby_prop_ids) > 0:
 			rho = random.random()
 			if rho < 0.8:
-				mandatory_id = random.choice(groupby_prop_ids)
-				propids2query.append(mandatory_id)
-				query_probabilities[mandatory_id] = 0
-				num_props2query -= 1
+				propids2query += groupby_prop_ids
+				for pid in groupby_prop_ids:
+					query_probabilities[pid] = 0
+					num_props2query -= 1
+		num_props2query = max(num_props2query, 0)
 
 		# if a column's value is already settled by an equality 'where' condition, then there is no need to query it
 		# anymore, since it's something we already know before our query.
@@ -2169,7 +2170,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 		propids2query += numpy.random.choice(numpy.arange(len(propertynps)), num_props2query, replace=False,
 											p=query_probabilities).tolist()
-		num_props2query = len(propids2query)
+
 		for i in propids2query:
 			assert (i in available_prop_ids)
 			# set corresponding table_activated to True
@@ -2181,6 +2182,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			if table_actived[key] is False:
 				additional_props_to_select = typenps[key].properties
 				propids2query.append(numpy.random.choice(additional_props_to_select))
+		num_props2query = len(propids2query)
 		props2query = []
 		for idx in propids2query:
 			chosen_prop = copy.deepcopy(propertynps[idx])

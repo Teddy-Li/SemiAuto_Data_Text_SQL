@@ -510,8 +510,13 @@ for entry_id, entry in enumerate(data):
 		if prop_id in columns_used_by_where:
 			num_of_where_columns_queried += 1
 	if have_grouped_by_column_selected and len(unselected_groupby_columns) > 0:
-		print(entry)
-		raise AssertionError
+		print(entry['query'])
+		print(entry['question'])
+		print("")
+		pass
+	elif have_grouped_by_column_selected:
+		print("!")
+		#raise AssertionError
 	if selected_subset_of_groupby:
 		if len(entry['sql']['orderBy']) > 0:
 			orderby_at_covered_cases_cnt += 1
