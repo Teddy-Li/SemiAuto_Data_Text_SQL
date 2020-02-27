@@ -2195,7 +2195,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				# if there is only one value for this column in query, then we only by probability of 0.05 use 'count()'
 				cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(chosen_prop)], table_ids=table_ids, join_cdts=join_cdts,
 							cdts=where_cdts, cdt_linkers=where_linkers,
-							group_props=groupby_props, having_cdt=having_cdt)
+							group_props=groupby_props, having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+							orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 				res = cursor.execute(cur_qrynp.z).fetchall()
 				if len(res) > 1 or rho < 0.05:
@@ -2234,7 +2235,16 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# about order by; no order-by for recursed sub-queries
 	rho = abs(random.gauss(0, 1))
 
-	if is_recursive is False and specific_props is not None and len(specific_props) > 0:
+	# we don't order-by when there is only one entry returned
+	cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
+				cdts=where_cdts, cdt_linkers=where_linkers,
+				group_props=groupby_props, having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
+	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+	res = cursor.execute(cur_qrynp.z).fetchall()
+	if len(res) <= 1:
+		num_orderbys = 0
+	elif is_recursive is False and specific_props is not None:
 		num_orderbys = 0
 	elif require_singlereturn and props2query[0].aggr == 0:
 		assert is_recursive
@@ -2254,8 +2264,9 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# if groupBy is not used by 'having', and xxx is covered by groupBy columns, then use an grouped-columns related
 	# orderBy to use it
 	if having_cdt is None and num_groupbys > 0 and props2query_covered_by_groupbyids:
-		num_orderbys = max(1, num_orderbys)
-		need_orderby_covered = True
+		if is_recursive is True or specific_props is None:
+			num_orderbys = max(1, num_orderbys)
+			need_orderby_covered = True
 
 	orderby_available_props = []
 
