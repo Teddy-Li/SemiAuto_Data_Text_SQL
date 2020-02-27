@@ -515,7 +515,7 @@ for entry_id, entry in enumerate(data):
 		print("")
 		pass
 	elif have_grouped_by_column_selected:
-		print("!")
+		pass
 		#raise AssertionError
 	if selected_subset_of_groupby:
 		if len(entry['sql']['orderBy']) > 0:
