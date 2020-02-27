@@ -407,8 +407,8 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 	else:
 		num_values = 1
 	if cmper.index == 2 and chosen_prop.dtype in ['int', 'double']:
-		chosen_prop.c_english = 'is equal to {0}'
-		chosen_prop.c_chinese = '与{0}相等'
+		cmper.c_english = 'is equal to {0}'
+		cmper.c_chinese = '与{0}相等'
 	if cmper.index in [8, 9]:
 		rho = random.random()
 		if rho < 0.1 and not no_negative:

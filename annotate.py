@@ -34,9 +34,9 @@ for idx, item in enumerate(saved_qrys[args.start_from:]):
 	print('database: ', item['db_id'])
 	print('sql: ')
 	print(item['query'])
-	#print('full question: ')
-	#print(item['question'])
-	#print('')
+	print('full question: ')
+	print(item['question'])
+	print('')
 	print('question in sequence: ')
 	for s in item['question_sequence']:
 		print(s)
