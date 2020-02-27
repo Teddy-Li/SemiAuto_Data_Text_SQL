@@ -109,6 +109,7 @@ like_endswith_cnt = 0
 same_column_multiple_wheres_cnt = 0
 exist_groupby_cnt = 0
 exist_groupby_selected_cnt = 0
+groupby_selected_but_not_covered_cnt = 0
 
 for idx, tab in enumerate(tables):
 	if tab['db_id'] not in table_stats:
@@ -513,6 +514,7 @@ for entry_id, entry in enumerate(data):
 		print(entry['query'])
 		print(entry['question'])
 		print("")
+		groupby_selected_but_not_covered_cnt += 1
 		pass
 	elif have_grouped_by_column_selected:
 		pass
@@ -771,6 +773,7 @@ print("same_column_multiple_wheres_cnt: ", same_column_multiple_wheres_cnt,
 	  format(same_column_multiple_wheres_cnt / total_entries, '.3f'))
 print("exist_groupby_cnt: ", exist_groupby_cnt)
 print("exist_groupby_selected_cnt: ", exist_groupby_selected_cnt)
+print("groupby_selected_but_not_covered_cnt: ", groupby_selected_but_not_covered_cnt)
 
 for key in table_stats:
 	if key not in num_entries:
