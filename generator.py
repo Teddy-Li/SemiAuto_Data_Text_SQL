@@ -1803,7 +1803,7 @@ num_tables_distribution = {False: transform2distribution_proportional(numpy.arra
 num_wheres_distribution = {False: transform2distribution_proportional(numpy.array([3000., 3000., 800., 400, 1.])),
 						   True: transform2distribution_proportional(numpy.array([4., 1.5, 0.2,
 																				  0.01, 0.]))}  # padded each number with 10 to allow extreme queries with 4 where-conditions
-num_selected_distribution = transform2distribution_proportional(numpy.array([0., 4600., 1900., 400., 50.]))
+num_selected_distribution = transform2distribution_proportional(numpy.array([0., 4800., 1700., 350., 40.]))
 
 AGGR_SUBQDIST = transform2distribution_proportional(
 	numpy.array([310., 66., 44., 0., 0., 90.]))  # only allow max, min, avg
