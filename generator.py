@@ -2388,8 +2388,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 		# with a 0.3 probability or is is needed, add a STAR property as orderby-property in order to
 		rho = random.random()
-		if (rho < 0.9 and num_groupbys > 0) or (
-				rho < 0.9 and orderby_cover_satisfied) or orderby_cover_satisfied == False:
+		if (rho < 0.85 and num_groupbys > 0) or (
+				rho < 0.85 and orderby_cover_satisfied) or orderby_cover_satisfied == False:
 			# if it is a union/except/intersect clause, allow only queried props to be ordered, care about usefulness
 			# of group-by clauses no more here
 			if specific_props is None and not all_aggregated:
@@ -2408,7 +2408,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		if require_singlereturn:
 			limit = 1
 		elif rho < 0.676:
-			limit_dist = [0] + [0.05] * 100
+			limit_dist = [0.] + [0.05] * 100
 			limit_dist[1] = 90
 			limit_dist[2] = 2
 			limit_dist[3] = 5
