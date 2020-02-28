@@ -616,6 +616,8 @@ def calc_forquery_distribution(available_prop_ids, groupby_prop_ids, propertynps
 			scores[idx] = 0.15
 		elif propertynps[idx].dtype in ['datetime', 'int']:
 			scores[idx] = 0.5
+		elif propertynps[idx].dtype == 'double':
+			scores[idx] = 0.7
 		elif 'varchar' in propertynps[idx].dtype:
 			scores[idx] = 1.7
 		else:
@@ -2367,6 +2369,10 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			for p2 in props2query:
 				if p1.overall_idx == p2.overall_idx:
 					ob_probs[i] += 1.7
+			if p1.dtype == 'id':
+				ob_probs[i] *= 0.5
+			elif p1.dtype == 'int':
+				ob_probs[i] *= 1.3
 		ob_probs = transform2distribution_proportional(ob_probs)
 		orderby_props_raw = numpy.random.choice(orderby_available_props, num_orderbys, p=ob_probs, replace=False)
 
