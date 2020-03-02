@@ -215,8 +215,12 @@ def _uniquecount(x):
 		z = 'COUNT(distinct %s)' % x.z
 	else:
 		distinct = False
-		c_english = 'the number of %s' % x.c_english
-		c_chinese = '%s的数量' % x.c_chinese
+		if x.dtype == 'star':
+			c_english = 'the number of entries'
+			c_chinese = '数量'
+		else:
+			c_english = 'the number of %s' % x.c_english
+			c_chinese = '%s的数量' % x.c_chinese
 		z = 'COUNT(%s)' % x.z
 	return c_english, c_chinese, z, distinct
 
@@ -1338,6 +1342,8 @@ class QRYNP:
 		if self.np.distinct:
 			sent_1 += 'all different values of '
 
+		num_tables = len(self.np.table_ids)
+
 		# queried_props info
 		tableid_of_last_prop = None
 		# if there are no group-by clauses in this query, write down the ultimate version of queried props directly
@@ -1376,13 +1382,14 @@ class QRYNP:
 					sent_1 += ' and '
 
 		# table info
-		sent_1 += ' from '
-		for idx, table_id in enumerate(self.np.table_ids):
-			sent_1 += typenps[table_id].c_english
-			if idx + 2 < len(self.np.table_ids):
-				sent_1 += ', '
-			elif idx + 2 == len(self.np.table_ids):
-				sent_1 += ' and '
+		if num_tables > 1:
+			sent_1 += ' from '
+			for idx, table_id in enumerate(self.np.table_ids):
+				sent_1 += typenps[table_id].c_english
+				if idx + 2 < len(self.np.table_ids):
+					sent_1 += ', '
+				elif idx + 2 == len(self.np.table_ids):
+					sent_1 += ' and '
 
 		# join-on conditions info
 		if self.np.join_cdts is not None:
@@ -1802,7 +1809,7 @@ CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' bet
 # these distributions are naturally proportional
 num_tables_distribution = {False: transform2distribution_proportional(numpy.array([4361., 3200., 22., 6.])),
 						   True: transform2distribution_proportional(numpy.array([459., 51., 1., 0.01]))}
-num_wheres_distribution = {False: transform2distribution_proportional(numpy.array([3000., 3000., 800., 400, 1.])),
+num_wheres_distribution = {False: transform2distribution_proportional(numpy.array([3300., 2500., 900., 400, 1.])),
 						   True: transform2distribution_proportional(numpy.array([4., 1.5, 0.2,
 																				  0.01, 0.]))}  # padded each number with 10 to allow extreme queries with 4 where-conditions
 num_selected_distribution = transform2distribution_proportional(numpy.array([0., 4800., 1700., 350., 40.]))
@@ -2370,9 +2377,9 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				if p1.overall_idx == p2.overall_idx:
 					ob_probs[i] += 1.7
 			if p1.dtype == 'id':
-				ob_probs[i] *= 0.5
+				ob_probs[i] *= 0.2
 			elif p1.dtype == 'int':
-				ob_probs[i] *= 1.3
+				ob_probs[i] *= 1.5
 		ob_probs = transform2distribution_proportional(ob_probs)
 		orderby_props_raw = numpy.random.choice(orderby_available_props, num_orderbys, p=ob_probs, replace=False)
 
