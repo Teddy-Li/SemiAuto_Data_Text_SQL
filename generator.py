@@ -328,6 +328,9 @@ def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_ps
 	c_chinese = propertynps[fetched_rel.prop_ids[0]].c_chinese.format(
 		typenps[fetched_rel.table_ids[0]].c_chinese + '的') + cmper.c_chinese.format(
 		propertynps[fetched_rel.prop_ids[1]].c_chinese.format(typenps[fetched_rel.table_ids[1]].c_chinese + '的'))
+	c_english_half = cmper.c_english.format(
+		propertynps[fetched_rel.prop_ids[1]].c_english.format(typenps[fetched_rel.table_ids[1]].c_english + '\'s '))
+
 	z = propertynps[fetched_rel.prop_ids[0]].z + cmper.z.format(propertynps[fetched_rel.prop_ids[1]].z)
 	left = copy.deepcopy(propertynps[fetched_rel.prop_ids[0]])
 	right = copy.deepcopy(propertynps[fetched_rel.prop_ids[1]])
@@ -1409,7 +1412,12 @@ class QRYNP:
 		is_and = None  # whether the condition linker for where conditions is 'and'
 		if self.np.cdts is None:
 			self.np.cdts = []
-		for idx, cond in enumerate(self.np.cdts):
+		_idx = 0
+		while _idx < len(self.np.cdts):
+			if _idx+1 < len(self.np.cdts):
+				next_column_id = self.np.cdts[_idx+1].left.overall_idx
+			else:
+				next_column_id = None
 			# allows for 'and' & 'or' linkers both present in a set of 'where' conditions (though not useful as of
 			# SPIDER's scope)
 			if is_and is None:
@@ -1422,10 +1430,29 @@ class QRYNP:
 				else:
 					cur_sent = 'Result {0[%d]}: Find in addition to Result {0[%d]}, those from Result {0[%d]} satisfying ' % (
 						len(c_english), len(c_english) - 1, 0)
-			cur_sent += cond.c_english
-			if idx < len(self.np.cdts) - 1:
-				is_and = (self.np.cdt_linkers[idx] == 'and')  # is_and value may change from True to False
+			cur_sent += self.np.cdts[_idx].c_english
+			if next_column_id is not None and next_column_id == self.np.cdts[_idx].left.overall_idx:
+				cur_sent += ' ' + self.np.cdt_linkers[_idx]
+				next_cond = self.np.cdts[_idx+1]
+				if isinstance(next_cond.right, numpy.ndarray) or isinstance(next_cond.right, list):
+					value_ce = []
+					for item in next_cond.right:
+						value_ce.append(item.c_english)
+					utt_next = ' ' + next_cond.cmper.c_english.format(value_ce)
+				elif isinstance(next_cond.right, PROPERTYNP):
+					utt_next = ' ' + next_cond.cmper.c_english.format(next_cond.right.c_english.format(''))
+				elif isinstance(next_cond.right, QRYNP):
+					utt_next = ' ' + next_cond.cmper.c_english.format(' ( ' + next_cond.right.c_english + ' ) ')
+				else:
+					raise AssertionError
+				if utt_next[:4] == ' is ':
+					utt_next = utt_next[4:]
+				cur_sent += utt_next
+				_idx += 1
+			if _idx < len(self.np.cdts) - 1:
+				is_and = (self.np.cdt_linkers[_idx] == 'and')  # is_and value may change from True to False
 			c_english.append(cur_sent)
+			_idx += 1
 
 		# groupby info
 		if self.np.group_props is not None:
@@ -2644,7 +2671,7 @@ def build_spider_dataset(num):
 			except Exception as e:
 				print("!")
 				item_str = item
-			if prop.dtype in ['datetime', 'bool']:
+			if prop.dtype in ['datetime', 'bool'] and item_str[0] not in ["'", '"']:
 				item_str = "'" + item_str + "'"
 
 			# do not save those None or '' values to avoid confusion
@@ -3034,7 +3061,7 @@ def main(idx, verbose):
 
 
 def debug(verbose):
-	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(0)
+	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(1)
 	assert valid
 	fp = open('./result_0131.jsonl', 'w')
 	for i in range(ITR_TRY):
@@ -3062,8 +3089,8 @@ def debug(verbose):
 if __name__ == '__main__':
 	begin = time.time()
 	idx = args.db_id
-	main(idx, args.verbose)
-	# debug(True)
+	# main(idx, args.verbose)
+	debug(True)
 	end = time.time()
 
 	# display the time spent in this run of query-generation
