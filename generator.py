@@ -414,7 +414,7 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 	else:
 		num_values = 1
 	if cmper.index == 2 and chosen_prop.dtype in ['int', 'double']:
-		cmper.c_english = 'is equal to {0}'
+		cmper.c_english = ' is equal to {0}'
 		cmper.c_chinese = '与{0}相等'
 	if cmper.index in [8, 9]:
 		rho = random.random()
@@ -1445,7 +1445,7 @@ class QRYNP:
 					utt_next = ' ' + next_cond.cmper.c_english.format(' ( ' + next_cond.right.c_english + ' ) ')
 				else:
 					raise AssertionError
-				if utt_next[:4] == ' is ':
+				if 'is' in utt_next[:4]:
 					utt_next = utt_next[4:]
 				cur_sent += utt_next
 				_idx += 1
@@ -1453,6 +1453,16 @@ class QRYNP:
 				is_and = (self.np.cdt_linkers[_idx] == 'and')  # is_and value may change from True to False
 			c_english.append(cur_sent)
 			_idx += 1
+
+		selected_in_groupby = True
+		for prop_1 in self.np.queried_props:
+			in_groupby = False
+			for prop_2 in self.np.group_props:
+				if prop_1.overall_idx == prop_2.overall_idx:
+					in_groupby = True
+					break
+			if not in_groupby:
+				selected_in_groupby = False
 
 		# groupby info
 		if self.np.group_props is not None:
@@ -1472,8 +1482,15 @@ class QRYNP:
 				# if there are group-by clauses in query, specify the aggregators of queried props along with the
 				# group-by clause itself
 				groupby_sent += ', find '
+
+				if selected_in_groupby and self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
+					groupby_sent += 'top %d of ' % self.np.limit
+
 				if self.np.distinct:
-					groupby_sent += 'all different values of '
+					if selected_in_groupby and self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
+						groupby_sent += 'different values of '
+					else:
+						groupby_sent += 'all different values of '
 				tableid_of_last_prop = None
 				for idx, prop in enumerate(self.np.queried_props):
 					# if it is a '*' column
@@ -1490,27 +1507,56 @@ class QRYNP:
 						groupby_sent += ', '
 					elif idx + 2 == len(self.np.queried_props):
 						groupby_sent += ' and '
+
+				if selected_in_groupby and self.np.orderby_props is not None and len(self.np.orderby_props) > 0:
+					if self.np.orderby_order == 'asc':
+						_order = 'ascending'
+					elif self.np.orderby_order == 'desc':
+						_order = 'descending'
+					groupby_sent += ' in %s order of ' % _order
+					for idx, item in enumerate(self.np.orderby_props):
+						groupby_sent += item.c_english.format('')
+						if idx + 1 < len(self.np.orderby_props):
+							groupby_sent += ' then '
 				c_english.append(groupby_sent)
 
-		if self.np.orderby_props is not None:
+		if selected_in_groupby:
+			assert self.np.group_props is not None
+
+		if self.np.orderby_props is not None and not selected_in_groupby:
 			if len(self.np.orderby_props) > 0:
 				assert self.np.orderby_order is not None
-				if self.np.limit is not None:
-					limit_ce = 'top %d of ' % self.np.limit
+				istop1 = None
+				if self.np.limit is not None and self.np.limit == 1:
+					istop1 = True
+					if self.np.orderby_order == 'asc':
+						_order = 'least'
+					elif self.np.orderby_order == 'desc':
+						_order = 'most'
+					else:
+						raise AssertionError
+					orderby_sent = 'Result {0[%d]}: find Result {0[%d]} with the %s ' % (len(c_english), len(c_english)-1, _order)
 				else:
-					limit_ce = ''
-				if self.np.orderby_order == 'asc':
-					_order = 'ascending'
-				elif self.np.orderby_order == 'desc':
-					_order = 'descending'
-				else:
-					raise AssertionError
-				orderby_sent = 'Result {0[%d]}: present %sResult {0[%d]} in %s order of ' % (
-					len(c_english), limit_ce, len(c_english) - 1, _order)
+					istop1 = False
+					if self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
+							limit_ce = 'top %d of ' % self.np.limit
+					else:
+						limit_ce = ''
+					if self.np.orderby_order == 'asc':
+						_order = 'ascending'
+					elif self.np.orderby_order == 'desc':
+						_order = 'descending'
+					else:
+						raise AssertionError
+					orderby_sent = 'Result {0[%d]}: present %sResult {0[%d]} in %s order of ' % (
+						len(c_english), limit_ce, len(c_english) - 1, _order)
 				for idx, item in enumerate(self.np.orderby_props):
 					orderby_sent += item.c_english.format('')
 					if idx + 1 < len(self.np.orderby_props):
-						orderby_sent += ' then '
+						if istop1:
+							orderby_sent += ' '
+						else:
+							orderby_sent += ' then '
 				c_english.append(orderby_sent)
 
 		if self.np.has_union or self.np.has_except or self.np.has_intersect:
@@ -1828,7 +1874,7 @@ class QRYNP:
 STAR_PROP = PROPERTYNP('everything', '全部信息', '*', 'star', overall_idx=-1, values=[], meta_idx=-1)
 
 CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' between {0[0]} and {0[1]}', 1),
-		  CMP(' is {0}', '是{0}', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
+		  CMP(' is equal to {0}', '是{0}', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
 		  CMP(' is smaller than {0}', '比{}小', ' < {0}', 4), CMP(' is not smaller than {0}', '不比{0}小', ' >= {0}', 5),
 		  CMP(' is not larger than {0}', '不比{0}大', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
 		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9)]
