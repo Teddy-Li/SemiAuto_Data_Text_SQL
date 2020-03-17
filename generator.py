@@ -1185,8 +1185,8 @@ class QRYNP:
 						orderby_propnames.append(prop.z.format(temp_tabname_bucket[prop.table_id]))
 				z += (' ' + ', '.join(orderby_propnames) + ' ')
 				z_toks += (' ' + ', '.join(orderby_propnames) + ' ').split()
-			z += ' %s ' % self.np.orderby_order
-			z_toks.append(self.np.orderby_order)
+				z += ' %s ' % self.np.orderby_order
+				z_toks.append(self.np.orderby_order)
 
 		if self.np.limit is not None:
 			assert (self.np.limit > 0)
@@ -1207,6 +1207,8 @@ class QRYNP:
 				z += ' intersect ' + self.np.qrynp_2.z
 				z_toks.append('intersect')
 				z_toks += self.np.qrynp_2.z_toks
+			else:
+				raise AssertionError
 
 		# use '#' as an indicator for values
 		z_toks_novalue = []
@@ -2077,6 +2079,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 	if print_verbose:
 		print("where set")
+	available_prop_ids_after_where = copy.copy(available_prop_ids)
 
 	# about group-by and having
 	having_cdt = None
@@ -2534,11 +2537,17 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				break
 		# if no aggregators exist in queried properties
 		if flag:
-			# here because the assigned properties might not be compatible with group-by clauses or such, it might not
-			# run, if it doesn't run, just discard it
-			np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recursive=False,
-										  specific_props=props2query, cursor=cursor, print_verbose=print_verbose)
-
+			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
+						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=having_cdt,
+						orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
+			rho = random.random()
+			if rho < 0.1:
+				# here because the assigned properties might not be compatible with group-by clauses or such, it might not
+				# run, if it doesn't run, just discard it
+				np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recursive=False,
+											  specific_props=props2query, cursor=cursor, print_verbose=print_verbose)
+			else:
+				np_2, qrynp_2 = modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, cur_np, available_prop_ids_after_where, cursor, print_verbose)
 			# choose between using the second query as an 'union' or an 'except'
 			rho = random.random()
 			if rho < 0.1:
@@ -2591,6 +2600,96 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	if print_verbose:
 		print("ALL SET!")
 		print("-----------")
+	return final_np, final_qrynp
+
+
+def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, available_prop_ids, cursor, print_verbose):
+	rho = random.random()
+	final_np = None
+	final_qrynp = None
+
+	if (rho < 0.8 and len(last_np.cdts) > 0) or len(last_np.cdts) >= 3:
+		to_replace_idx = random.choice(range(len(last_np.cdts)))
+		found = False
+		while not found:
+			rho = random.random()
+			# if already is a recursed function instance, don't dive deeper again
+			if rho < 0.01:
+				current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
+													   prop_rels, cursor=cursor, verbose=print_verbose)
+			else:
+				rho = random.random()
+				if rho < 0.7:
+					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps,
+														   assigned_prop=last_np.cdts[to_replace_idx].left)
+				else:
+					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+			# there is guaranteed to have a c-v condition
+			if current_where_cdt is None:
+				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+
+			# $execution-guidance
+			cur_np = copy.deepcopy(last_np)
+			cur_np.cdts[to_replace_idx] = current_where_cdt
+			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+			last_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+			prev_np = copy.deepcopy(cur_np)
+			prev_np.cdts = prev_np.cdts[:to_replace_idx] + prev_np.cdts[to_replace_idx+1:]
+			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps)
+
+			res = cursor.execute(cur_qrynp.z).fetchall()
+			prev_res = cursor.execute(prev_qrynp.z).fetchall()
+			last_res = cursor.execute(last_qrynp.z).fetchall()
+
+			if len(res) > 0 and len(res) != len(prev_res) and len(res) != len(last_res):
+				continue
+			else:
+				found = True
+				final_np = cur_np
+				final_qrynp = cur_qrynp
+	else:
+		found = False
+		while not found:
+			rho = random.random()
+			# if already is a recursed function instance, don't dive deeper again
+			if rho < 0.01:
+				current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
+													   prop_rels, cursor=cursor, verbose=print_verbose)
+			else:
+				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+			# there is guaranteed to have a c-v condition
+			if current_where_cdt is None:
+				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+
+			# $execution-guidance
+			cur_np = copy.deepcopy(last_np)
+			if cur_np.cdts is None:
+				cur_np.cdts = []
+			if cur_np.cdt_linkers is None:
+				cur_np.cdt_linkers = []
+
+			cur_np.cdts.append(current_where_cdt)
+			if len(cur_np.cdts) > 0:
+				# choose a linker between 'and' & 'or', with proportion of 511:199 according to SPIDER train set
+				rho = random.random()
+				if rho < 0.18:
+					cur_np.cdt_linkers.append('or')
+				else:
+					cur_np.cdt_linkers.append('and')
+
+			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+			last_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+
+			res = cursor.execute(cur_qrynp.z).fetchall()
+			last_res = cursor.execute(last_qrynp.z).fetchall()
+
+			if len(res) > 0 and len(res) != len(last_res):
+				continue
+			else:
+				found = True
+				final_np = cur_np
+				final_qrynp = cur_qrynp
+
 	return final_np, final_qrynp
 
 
