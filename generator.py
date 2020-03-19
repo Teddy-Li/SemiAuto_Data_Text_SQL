@@ -15,7 +15,7 @@ from scipy.stats import entropy
 from collections import defaultdict
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-d', '--db_id', type=int, default=1)
+parser.add_argument('-d', '--db_id', type=int, default=0)
 parser.add_argument('-v', '--verbose', type=bool, default=False, help='print verbose info')
 args = parser.parse_args()
 db_ids_to_ignore = [124, 131]
@@ -172,7 +172,7 @@ def _avg(x):
 	# the property to be averaged must be single
 	c_english = 'the average of {0} %s' % x.c_english
 	c_chinese = '%s的平均值' % x.c_chinese
-	z = 'AVG(%s)' % x.z
+	z = 'AVG ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
 
@@ -181,7 +181,7 @@ def _min(x):
 	assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the smallest %s' % x.c_english
 	c_chinese = '%s的最小值' % x.c_chinese
-	z = 'MIN(%s)' % x.z
+	z = 'MIN ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
 
@@ -190,7 +190,7 @@ def _max(x):
 	assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the largest %s' % x.c_english
 	c_chinese = '%s的最大值' % x.c_chinese
-	z = 'MAX(%s)' % x.z
+	z = 'MAX ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
 
@@ -199,7 +199,7 @@ def _sum(x):
 	assert (x.dtype in CALCULABLE_DTYPES)
 	c_english = 'the sum of %s' % x.c_english
 	c_chinese = '%s的总和' % x.c_chinese
-	z = 'SUM(%s)' % x.z
+	z = 'SUM ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
 
@@ -212,7 +212,7 @@ def _uniquecount(x):
 		distinct = True
 		c_english = 'the number of different values of %s' % x.c_english
 		c_chinese = '%s不同取值的数量' % x.c_chinese
-		z = 'COUNT(distinct %s)' % x.z
+		z = 'COUNT ( distinct %s )' % x.z
 	else:
 		distinct = False
 		if x.dtype == 'star':
@@ -221,7 +221,7 @@ def _uniquecount(x):
 		else:
 			c_english = 'the number of %s' % x.c_english
 			c_chinese = '%s的数量' % x.c_chinese
-		z = 'COUNT(%s)' % x.z
+		z = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
 
 
@@ -356,7 +356,7 @@ def choose_proppair_for_cdt(left_available_prop_ids, right_available_prop_ids, p
 			if prop_mat[i, j] == 0 or i == j or (is_comparable(propertynps[i].dtype, propertynps[j].dtype) is False):
 				cand_prop_mat.append(-1000000)
 			elif propertynps[i].dtype == 'id' and propertynps[j].dtype == 'id':
-				cand_prop_mat.append(prop_mat[i, j]*0.3)
+				cand_prop_mat.append(prop_mat[i, j] * 0.3)
 			else:
 				cand_prop_mat.append(prop_mat[i, j])
 	try:
@@ -372,7 +372,8 @@ def choose_proppair_for_cdt(left_available_prop_ids, right_available_prop_ids, p
 # 'in' comparer in where conditions appear only in those occasions with c-i conditions
 # 
 # use_aggr_for_left_prop is equal to true iff it is a having condition
-def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_prop=False, assigned_prop=None, no_negative=False):
+def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_prop=False, assigned_prop=None,
+						   no_negative=False):
 	if assigned_prop is None:
 		# the left-value in where conditions cannot have aggregators
 		scores = [0] * len(available_prop_ids)
@@ -1096,17 +1097,17 @@ class QRYNP:
 		for idx, prop in enumerate(self.np.queried_props):
 			if prop.dtype == 'star':
 				z += prop.z.format('')
-				z_toks.append(prop.z.format(''))
+				z_toks += prop.z.format('').split()
 			elif len(self.np.table_ids) > 1:
 				table_pos = None
 				for i, item in enumerate(self.np.table_ids):
 					if item == prop.table_id:
-						table_pos = i
+						table_pos = i+1
 				z += prop.z.format('T{0}.'.format(table_pos))
-				z_toks.append(prop.z.format('T{0}.'.format(table_pos)))
+				z_toks += prop.z.format('T{0} . '.format(table_pos)).split()
 			else:
-				z += prop.z.format(typenps[prop.table_id].z + '.')
-				z_toks.append(prop.z.format(typenps[prop.table_id].z + '.'))
+				z += prop.z.format('')
+				z_toks += prop.z.format('').split()
 
 			if idx < len(self.np.queried_props) - 1:
 				z += ' , '
@@ -1124,10 +1125,10 @@ class QRYNP:
 		for no, tabid in enumerate(self.np.table_ids):
 			if len(self.np.table_ids) == 1:
 				table_names.append(typenps[tabid].z)
-				temp_tabname_bucket[tabid] = typenps[tabid].z + '.'
+				temp_tabname_bucket[tabid] = ''
 			else:
-				table_names.append(typenps[tabid].z + ' as T%d ' % no)
-				temp_tabname_bucket[tabid] = 'T%d.' % no
+				table_names.append(typenps[tabid].z + ' as T%d ' % (no+1))
+				temp_tabname_bucket[tabid] = 'T%d . ' % (no+1)
 
 		z += (' ' + ' join '.join(table_names) + ' ')
 		z_toks += (' ' + ' join '.join(table_names) + ' ').split(' ')
@@ -1416,8 +1417,8 @@ class QRYNP:
 			self.np.cdts = []
 		_idx = 0
 		while _idx < len(self.np.cdts):
-			if _idx+1 < len(self.np.cdts):
-				next_column_id = self.np.cdts[_idx+1].left.overall_idx
+			if _idx + 1 < len(self.np.cdts):
+				next_column_id = self.np.cdts[_idx + 1].left.overall_idx
 			else:
 				next_column_id = None
 			# allows for 'and' & 'or' linkers both present in a set of 'where' conditions (though not useful as of
@@ -1435,7 +1436,7 @@ class QRYNP:
 			cur_sent += self.np.cdts[_idx].c_english
 			if next_column_id is not None and next_column_id == self.np.cdts[_idx].left.overall_idx:
 				cur_sent += ' ' + self.np.cdt_linkers[_idx]
-				next_cond = self.np.cdts[_idx+1]
+				next_cond = self.np.cdts[_idx + 1]
 				if isinstance(next_cond.right, numpy.ndarray) or isinstance(next_cond.right, list):
 					value_ce = []
 					for item in next_cond.right:
@@ -1537,11 +1538,12 @@ class QRYNP:
 						_order = 'most'
 					else:
 						raise AssertionError
-					orderby_sent = 'Result {0[%d]}: find Result {0[%d]} with the %s ' % (len(c_english), len(c_english)-1, _order)
+					orderby_sent = 'Result {0[%d]}: find Result {0[%d]} with the %s ' % (
+					len(c_english), len(c_english) - 1, _order)
 				else:
 					istop1 = False
 					if self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
-							limit_ce = 'top %d of ' % self.np.limit
+						limit_ce = 'top %d of ' % self.np.limit
 					else:
 						limit_ce = ''
 					if self.np.orderby_order == 'asc':
@@ -1886,7 +1888,8 @@ num_tables_distribution = {False: transform2distribution_proportional(numpy.arra
 						   True: transform2distribution_proportional(numpy.array([459., 51., 1., 0.01]))}
 num_wheres_distribution = {False: transform2distribution_proportional(numpy.array([3300., 2500., 900., 400, 1.])),
 						   True: transform2distribution_proportional(numpy.array([4., 1.5, 0.2,
-																				  0.01, 0.]))}  # padded each number with 10 to allow extreme queries with 4 where-conditions
+																				  0.01,
+																				  0.]))}  # padded each number with 10 to allow extreme queries with 4 where-conditions
 num_selected_distribution = transform2distribution_proportional(numpy.array([0., 4800., 1700., 350., 40.]))
 
 AGGR_SUBQDIST = transform2distribution_proportional(
@@ -1995,7 +1998,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	where_cnt = 0
 
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
-				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])], orderby_order='asc', limit=MAX_RETURN_ENTRIES)
+				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])], orderby_order='asc',
+				limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 	prev_res = cursor.execute(cur_qrynp.z).fetchall()
 	ci_occured_flag = False
@@ -2049,7 +2053,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 		# $execution-guidance
 		cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
-					cdts=where_cdts, cdt_linkers=where_linkers, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+					cdts=where_cdts, cdt_linkers=where_linkers,
+					orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 					orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 
@@ -2114,7 +2119,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			if cond.left.is_unique:
 				num_groupbys = 0
 
-	num_groupbys = min(num_groupbys, len(groupable_prop_ids), len(available_prop_ids)-1)
+	num_groupbys = min(num_groupbys, len(groupable_prop_ids), len(available_prop_ids) - 1)
 
 	# if query result contains only one entry, allow no group-by
 	if res_is_single:
@@ -2167,7 +2172,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 					having_usable_prop_ids.append(idx)
 			if rho < 0.03:
 				having_cdt = construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													prop_rels, True, cursor=cursor, no_negative=True, verbose=print_verbose)
+													prop_rels, True, cursor=cursor, no_negative=True,
+													verbose=print_verbose)
 			elif rho < 0.15:
 				having_cdt = construct_cv_where_cdt(having_usable_prop_ids, propertynps, True, no_negative=True)
 			elif rho < 0.4:
@@ -2179,8 +2185,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			_prop = copy.deepcopy(STAR_PROP)
 			_prop.set_aggr(3)
 			prev_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
-						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props)
+						 cdts=where_cdts, cdt_linkers=where_linkers,
+						 group_props=groupby_props)
 			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps)
 			prev_res = cursor.execute(prev_qrynp.z).fetchall()
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
@@ -2254,7 +2260,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		query_probabilities = transform2distribution_proportional(query_probabilities)
 
 		propids2query += numpy.random.choice(numpy.arange(len(propertynps)), num_props2query, replace=False,
-											p=query_probabilities).tolist()
+											 p=query_probabilities).tolist()
 
 		for i in propids2query:
 			assert (i in available_prop_ids)
@@ -2278,14 +2284,17 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			elif groupby_prop_ids is None and rho < 0.4:
 
 				# if there is only one value for this column in query, then we only by probability of 0.05 use 'count()'
-				cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(chosen_prop)], table_ids=table_ids, join_cdts=join_cdts,
+				cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(chosen_prop)], table_ids=table_ids,
+							join_cdts=join_cdts,
 							cdts=where_cdts, cdt_linkers=where_linkers,
-							group_props=groupby_props, having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+							group_props=groupby_props, having_cdt=having_cdt,
+							orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 							orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 				res = cursor.execute(cur_qrynp.z).fetchall()
 				if len(res) > 1 or rho < 0.05:
-					aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)), p=AGGR_DISTS[chosen_prop.dtype])
+					aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)),
+												  p=AGGR_DISTS[chosen_prop.dtype])
 					chosen_prop.set_aggr(aggr_id)
 			props2query.append(chosen_prop)
 
@@ -2323,7 +2332,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# we don't order-by when there is only one entry returned
 	cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers,
-				group_props=groupby_props, having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+				group_props=groupby_props, having_cdt=having_cdt,
+				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 	res = cursor.execute(cur_qrynp.z).fetchall()
@@ -2386,7 +2396,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# if all returned entries are the same, don't order by this column
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-				having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])], orderby_order='asc', limit=MAX_RETURN_ENTRIES)
+				having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	res = cursor.execute(cur_qrynp.z).fetchall()
 	if len(res) == 1000:
@@ -2407,7 +2418,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				vals = []
 				for ent in res:
 					assert len(ent) == len(headers)
-					vals.append(ent[h_idx:h_idx+1])
+					vals.append(ent[h_idx:h_idx + 1])
 				if all_the_same(vals):
 					available_prop_ids.remove(pid)
 				break
@@ -2447,7 +2458,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		# they are to around 25% relevant to selected columns
 
 		# here larger probability of being picked to order-by is assigned to those 'select'ed in query
-		ob_probs = [1]*len(orderby_available_props)
+		ob_probs = [1] * len(orderby_available_props)
 		for i, p1 in enumerate(orderby_available_props):
 			for p2 in props2query:
 				if p1.overall_idx == p2.overall_idx:
@@ -2514,9 +2525,9 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			len_res_prime = max(len(res), 1)
-			limit_dist = limit_dist[:len_res_prime+1]
+			limit_dist = limit_dist[:len_res_prime + 1]
 
-			limit = random.choices(range(min(len_res_prime+1, 101)), weights=limit_dist)[0]
+			limit = random.choices(range(min(len_res_prime + 1, 101)), weights=limit_dist)[0]
 		else:
 			limit = None
 
@@ -2547,7 +2558,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recursive=False,
 											  specific_props=props2query, cursor=cursor, print_verbose=print_verbose)
 			else:
-				np_2, qrynp_2 = modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, cur_np, available_prop_ids_after_where, cursor, print_verbose)
+				np_2, qrynp_2 = modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, cur_np,
+											 available_prop_ids_after_where, cursor, print_verbose)
 			# choose between using the second query as an 'union' or an 'except'
 			rho = random.random()
 			if rho < 0.1:
@@ -2560,8 +2572,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	if np_2 is not None:
 		assert qrynp_2 is not None
 		cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=having_cdt,
-						orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
+					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=having_cdt,
+					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 		res_1 = cursor.execute(cur_qrynp.z).fetchall()
 		res_2 = cursor.execute(qrynp_2.z).fetchall()
@@ -2603,7 +2615,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	return final_np, final_qrynp
 
 
-def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, available_prop_ids, cursor, print_verbose):
+def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, available_prop_ids, cursor,
+				 print_verbose):
 	rho = random.random()
 	final_np = None
 	final_qrynp = None
@@ -2616,12 +2629,12 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, a
 			# if already is a recursed function instance, don't dive deeper again
 			if rho < 0.01:
 				current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													   prop_rels, cursor=cursor, verbose=print_verbose)
+														   prop_rels, cursor=cursor, verbose=print_verbose)
 			else:
 				rho = random.random()
 				if rho < 0.7:
 					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps,
-														   assigned_prop=last_np.cdts[to_replace_idx].left)
+															   assigned_prop=last_np.cdts[to_replace_idx].left)
 				else:
 					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
 			# there is guaranteed to have a c-v condition
@@ -2634,7 +2647,7 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, a
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 			last_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 			prev_np = copy.deepcopy(cur_np)
-			prev_np.cdts = prev_np.cdts[:to_replace_idx] + prev_np.cdts[to_replace_idx+1:]
+			prev_np.cdts = prev_np.cdts[:to_replace_idx] + prev_np.cdts[to_replace_idx + 1:]
 			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps)
 
 			res = cursor.execute(cur_qrynp.z).fetchall()
@@ -2654,7 +2667,7 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, a
 			# if already is a recursed function instance, don't dive deeper again
 			if rho < 0.01:
 				current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													   prop_rels, cursor=cursor, verbose=print_verbose)
+														   prop_rels, cursor=cursor, verbose=print_verbose)
 			else:
 				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
 			# there is guaranteed to have a c-v condition
@@ -2722,8 +2735,8 @@ def build_spider_dataset(num):
 
 	typenps = []
 	for idx, tab_name in enumerate(meta['table_names']):
-		c_english = '@'+tab_name+'@'
-		c_chinese = '@'+tab_name+'@'
+		c_english = '@' + tab_name + '@'
+		c_chinese = '@' + tab_name + '@'
 		z = meta['table_names_original'][idx]
 		if ' ' in z:
 			z = '[' + z + ']'
@@ -2885,7 +2898,8 @@ def build_spider_dataset(num):
 	nm_prop_rels = []
 	for prop1 in propertynps:
 		for prop2 in propertynps:
-			if prop1.table_id in typenps[prop2.table_id].clones or prop2.table_id in typenps[prop1.table_id].clones or prop1.overall_idx == prop2.overall_idx:
+			if prop1.table_id in typenps[prop2.table_id].clones or prop2.table_id in typenps[
+				prop1.table_id].clones or prop1.overall_idx == prop2.overall_idx:
 				continue
 			if prop1.z == prop2.z:
 				# exclude those 'id' queries which are not in the same query
@@ -3163,6 +3177,91 @@ def generate_queries(database_idx, verbose):
 	return saved_results, dumped_results, saved_gold, dumped_gold, saved_canonical, dumped_canonical
 
 
+def list_recursively_same(l1, l2):
+	if len(l1) != len(l2):
+		return False
+	for idx in range(len(l1)):
+		if isinstance(l1[idx], list) and isinstance(l2[idx], list):
+			if not list_recursively_same(l1[idx], l2[idx]):
+				return False
+		elif isinstance(l1[idx], list) or isinstance(l2[idx],list):
+			return False
+		elif isinstance(l1[idx], dict) and isinstance(l2[idx], dict):
+			if not sql_is_same(l1[idx], l2[idx]):
+				return False
+		else:
+			if l1[idx] != l2[idx]:
+				return False
+	return True
+
+
+def sql_is_same(qry1, qry2):
+	if qry1['except'] is None and qry2['except'] is None:
+		pass
+	elif qry1['except'] is None or qry2['except'] is None:
+		return False
+	else:
+		except_same = sql_is_same(qry1['except'], qry2['except'])
+		if not except_same:
+			return False
+
+	if not list_recursively_same(qry1['from']['conds'], qry2['from']['conds']):
+		return False
+	if not list_recursively_same(qry1['from']['table_units'], qry2['from']['table_units']):
+		return False
+
+	if not list_recursively_same(qry1['groupBy'], qry2['groupBy']):
+		return False
+	if not list_recursively_same(qry1['having'], qry2['having']):
+		return False
+
+	if qry1['intersect'] is None and qry2['intersect'] is None:
+		pass
+	elif qry1['intersect'] is None or qry2['intersect'] is None:
+		return False
+	else:
+		intersect_same = sql_is_same(qry1['intersect'], qry2['intersect'])
+		if not intersect_same:
+			return False
+
+	if qry1['limit'] is None and qry2['limit'] is None:
+		pass
+	elif qry1['limit'] is None or qry2['limit'] is None:
+		return False
+	else:
+		if qry1['limit'] != qry2['limit']:
+			return False
+
+	if not list_recursively_same(qry1['orderBy'], qry2['orderBy']):
+		return False
+	if not list_recursively_same(qry1['select'], qry2['select']):
+		return False
+
+	if qry1['union'] is None and qry2['union'] is None:
+		pass
+	elif qry1['union'] is None or qry2['union'] is None:
+		return False
+	else:
+		union_same = sql_is_same(qry1['union'], qry2['union'])
+		if not union_same:
+			return False
+
+	if not list_recursively_same(qry1['where'], qry2['where']):
+		return False
+
+	'''
+	assert qry1['db_id'] == qry2['db_id']
+	if len(qry1['query_toks_no_value']) != len(qry2['query_toks_no_value']):
+		return False
+	tok1 = [item.lower() for item in qry1['query_toks_no_value']]
+	tok2 = qry2['query_toks_no_value']
+	for idx in range(len(tok1)):
+		if tok1[idx].lower() != tok2[idx].lower():
+			return False
+	'''
+	return True
+
+
 def main(idx, verbose):
 	# generate queries for English
 	if idx in db_ids_to_ignore:
@@ -3206,11 +3305,13 @@ def main(idx, verbose):
 
 
 def debug(verbose):
-	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(1)
+	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(
+		1)
 	assert valid
 	fp = open('./result_0131.jsonl', 'w')
 	for i in range(ITR_TRY):
-		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, finalize_sequence=True, cursor=crsr, print_verbose=verbose)
+		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, finalize_sequence=True, cursor=crsr,
+								  print_verbose=verbose)
 
 		print('SQL: ', qrynp.z)
 		print("Full question: ", qrynp.c_chinese)
@@ -3231,25 +3332,79 @@ def debug(verbose):
 	fp.close()
 
 
+def hit(db_idx, max_iter, verbose):
+	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(
+		db_idx)
+	assert valid
+
+	entries_to_hit = []
+	already_hit = []
+
+	with open('/Users/teddy/Files/spider/spider/train_spider.json', 'r') as fp:
+		gold_jsons = json.load(fp)
+		for item in gold_jsons:
+			if item['db_id'] == database_name:
+				entries_to_hit.append(item)
+				already_hit.append(False)
+
+	total_length = len(entries_to_hit)
+	hit_length = 0
+	turns_since_last_hit = 0
+
+	for i in range(max_iter):
+		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, finalize_sequence=True, cursor=crsr,
+								  print_verbose=verbose)
+		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=[], headers=[])
+		has_hit = False
+		for entry_idx, entry in enumerate(entries_to_hit):
+			if already_hit[entry_idx] is True:
+				continue
+			if sql_is_same(qry_formatted['sql'], entry['sql']):
+				already_hit[entry_idx] = True
+				hit_length += 1
+				print("hit!")
+				has_hit = True
+				turns_since_last_hit = 0
+				break
+		if not has_hit:
+			#print("miss!")
+			turns_since_last_hit += 1
+			if turns_since_last_hit >= 3000:
+				break
+		if i % 100 == 0:
+			print("step %d: total %d, of which %d were hit!" % (i, total_length, hit_length))
+
+	print("Total: %d, of which %d were hit!" % (total_length, hit_length))
+	for idx, item in enumerate(entries_to_hit):
+		if already_hit[idx] is False:
+			print(item['query_toks_no_value'])
+			print("")
+
+	crsr.close()
+	conn.close()
+	fp.close()
+
+
 if __name__ == '__main__':
 	begin = time.time()
 	idx = args.db_id
 	# main(idx, args.verbose)
-	debug(True)
+	# debug(True)
+	hit(idx, 10000, False)
 	end = time.time()
 
 	# display the time spent in this run of query-generation
 	dur = end - begin
 	string = 'Time spent: '
 	if dur > 3600:
-		string += '%d hour' % int(dur/3600)
+		string += '%d hour' % int(dur / 3600)
 		if dur > 7200:
 			string += 's, '
 		else:
 			string += ', '
 	dur = dur % 3600
 	if dur > 60:
-		string += '%d minute' % int(dur/60)
+		string += '%d minute' % int(dur / 60)
 		if dur > 120:
 			string += 's, '
 		else:
