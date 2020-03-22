@@ -225,6 +225,25 @@ def _uniquecount(x):
 	return c_english, c_chinese, z, distinct
 
 
+# for use in converting an SQL entry into a 'NP' class object
+def _count_uniqueness_specified(x, distinct):
+	assert (isinstance(x, PROPERTYNP))
+	# the count must be of integer type, specifically ordinal integer type
+	if distinct and x.dtype != 'star':
+		c_english = 'the number of different values of %s' % x.c_english
+		c_chinese = '%s不同取值的数量' % x.c_chinese
+		z = 'COUNT ( distinct %s )' % x.z
+	else:
+		if x.dtype == 'star':
+			c_english = 'the number of entries'
+			c_chinese = '数量'
+		else:
+			c_english = 'the number of %s' % x.c_english
+			c_chinese = '%s的数量' % x.c_chinese
+		z = 'COUNT ( %s )' % x.z
+	return c_english, c_chinese, z, distinct
+
+
 def _repeat(x):
 	return x.c_english, x.c_chinese, x.z, False
 
@@ -892,12 +911,15 @@ class PROPERTYNP(BASENP):
 		self.values = values
 		self.group_score = calc_group_score(self.dtype, self.values)
 
-	def set_aggr(self, aggr):
+	def set_aggr(self, aggr, function=None, distinct=None):
 		if self.aggr != 0:
 			print(self.aggr)
 			raise AssertionError
 		self.aggr = aggr
-		self.c_english, self.c_chinese, self.z, self.distinct = AGGREGATION_FUNCTIONS[self.aggr](self)
+		if function is not None:
+			self.c_english, self.c_chinese, self.z, self.distinct = function(self, distinct)
+		else:
+			self.c_english, self.c_chinese, self.z, self.distinct = AGGREGATION_FUNCTIONS[self.aggr](self)
 		if self.aggr == 3:
 			self.from_cnt = True
 			self.values = numpy.arange(len(self.values)).tolist()
@@ -972,6 +994,231 @@ class CDT(BASENP):
 		return res
 
 
+# convert a query in json format into a NP type object
+# pid needs to +1 because 0 is occupied by * in SPIDER format
+def np_from_entry(entry_sql, typenps, propertynps):
+	queried_props = []
+	for item in entry_sql['select'][1]:
+		aggr = item[0]
+		if item[1][0] != 0:
+			return None
+		pid = item[1][1][1]+1
+		aggr_distinct = item[1][1][2]
+		if item[1][2] is not None:
+			return None
+		prop = copy.deepcopy(propertynps[pid])  # !!!
+		if aggr == 3:
+			prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
+		else:
+			prop.set_aggr(aggr)
+		queried_props.append(prop)
+
+	table_ids = [item[1] for item in entry_sql['from']['table_units']]
+
+	join_cdts = []
+	for cond in entry_sql['from']['conds']:
+		assert cond[1] == 1
+
+		pid1 = cond[2][1][1]+1
+		pid2 = cond[3][1]+1
+		prop1 = copy.deepcopy(propertynps[pid1])
+		prop2 = copy.deepcopy(propertynps[pid2])
+
+		cmper = copy.deepcopy(CMPERS[1])  # always use equality comparer
+		c_english = propertynps[pid1].c_english.format(
+			typenps[pid1].c_english + '\'s ') + cmper.c_english.format(
+			propertynps[pid2].c_english.format(typenps[pid2].c_english + '\'s '))
+		c_chinese = propertynps[pid1].c_chinese.format(
+			typenps[pid1].c_chinese + '的') + cmper.c_chinese.format(
+			propertynps[pid2].c_chinese.format(typenps[pid2].c_chinese + '的'))
+		z = propertynps[pid1].z + cmper.z.format(propertynps[pid2].z)
+		fetched_cdt = CDT(c_english, c_chinese, z, prop1, prop2, cmper)
+		join_cdts.append(fetched_cdt)
+
+	cdts = []
+	cdt_linkers = []
+	for cond in entry_sql['where']:
+		if isinstance(cond, str):
+			assert cond == 'or' or cond == 'and'
+			cdt_linkers.append(cond)
+			continue
+
+		negative = cond[0]
+
+		cmper = None
+		cmper_idx = cond[1]
+		for item in CMPERS:
+			if item.index == cmper_idx:
+				cmper = copy.deepcopy(item)
+				break
+		assert cmper is not None
+
+		# does not support calculation operators
+		if cond[2][0] != 0:
+			return None
+
+		pid1 = cond[2][1][1]+1
+		chosen_prop = copy.deepcopy(propertynps[pid1])
+		value = cond[3]
+
+		if isinstance(value, list):
+			assert len(value) == 3
+			assert cond[4] is None
+			pid2 = value[1]+1
+			prop2 = copy.deepcopy(propertynps[pid2])
+			c_english = pid1.c_english.format('') + cmper.c_english.format(pid2.c_english.format(''))
+			c_chinese = pid1.c_chinese.format('') + cmper.c_chinese.format(pid2.c_chinese.format(''))
+			cdt = CDT(c_english, c_chinese, None, chosen_prop, prop2, cmper)
+			cdts.append(cdt)
+
+		elif isinstance(value, dict):
+			assert cond[4] is None
+			try:
+				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps)
+			except Exception as e:
+				print(e)
+				return None
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
+				' ( ' + qrynp_2.c_english + ' ) ')
+			c_chinese =chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
+			z = chosen_prop.z + cmper.z.format(' ( ' + qrynp_2.z + ' ) ')
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, qrynp_2, cmper)
+			cdts.append(cdt)
+		else:
+			try:
+				value_str = str(value)
+				value_z = '#' + value_str + '#'
+			except Exception as e:
+				raise
+			if cond[4] is not None:
+				try:
+					value_str_2 = str(cond[4])
+					value_z_2 = '#' + value_str_2 + '#'
+				except Exception as e:
+					raise
+				value_str = [value_str, value_str_2]
+				value_z = [value_z, value_z_2]
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_str)
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_str)
+			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, value, cmper)
+			cdts.append(cdt)
+	assert len(cdts) == (len(cdt_linkers) + 1)
+
+	group_props = []
+	for item in entry_sql['groupBy']:
+		assert item[0] == 0 and item[2] is False
+		gb_pid = item[1]+1
+		gb_prop = copy.deepcopy(propertynps[gb_pid])
+		group_props.append(gb_prop)
+
+	having_cdt = []
+	if len(entry_sql['having']) > 1:
+		return None
+	for cond in entry_sql['having']:
+		assert cond[0] is False
+		cmper = None
+		cmper_idx = cond[1]
+		for item in CMPERS:
+			if item.index == cmper_idx:
+				cmper = copy.deepcopy(item)
+		assert cmper is not None
+
+		# does not support calculation operators
+		if cond[2][0] != 0:
+			return None
+
+		pid1 = cond[2][1][1] + 1
+		chosen_prop = copy.deepcopy(propertynps[pid1])
+		value = cond[3]
+
+		assert not isinstance(value, list)
+		if isinstance(value, dict):
+			assert cond[4] is None
+			try:
+				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps)
+			except Exception as e:
+				print(e)
+				return None
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
+				' ( ' + qrynp_2.c_english + ' ) ')
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
+			z = chosen_prop.z + cmper.z.format(' ( ' + qrynp_2.z + ' ) ')
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, qrynp_2, cmper)
+			having_cdt.append(cdt)
+		else:
+			try:
+				value_str = str(value)
+				value_z = '#' + value_str + '#'
+			except Exception as e:
+				raise
+			if cond[4] is not None:
+				try:
+					value_str_2 = str(cond[4])
+					value_z_2 = '#' + value_str_2 + '#'
+				except Exception as e:
+					raise
+				value_str = [value_str, value_str_2]
+				value_z = [value_z, value_z_2]
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_str)
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_str)
+			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, value, cmper)
+			having_cdt.append(cdt)
+
+	orderby_props = []
+	orderby_order = None
+	if len(entry_sql['orderBy']) > 0:
+		orderby_order = entry_sql['orderBy'][0]
+		for item in entry_sql['orderBy'][1]:
+			if item[0] != 0:
+				return None
+			ob_pid = item[1][1]+1
+			ob_prop = copy.deepcopy(propertynps[ob_pid])
+			orderby_props.append(ob_prop)
+
+	limit = entry_sql['limit']
+	has_union = False
+	has_except = False
+	has_intersect = False
+	np_2 = None
+	qrynp_2 = None
+
+	if entry_sql['intersect'] is not None:
+		assert entry_sql['union'] is None and entry_sql['except'] is None
+		try:
+			np_2, qrynp_2 = np_from_entry(entry_sql['intersect'], typenps, propertynps)
+		except Exception as e:
+			print(e)
+			return None
+
+	if entry_sql['union'] is not None:
+		assert entry_sql['intersect'] is None and entry_sql['except'] is None
+		try:
+			np_2, qrynp_2 = np_from_entry(entry_sql['union'], typenps, propertynps)
+		except Exception as e:
+			print(e)
+			return None
+
+	if entry_sql['except'] is not None:
+		assert entry_sql['union'] is None and entry_sql['intersect'] is None
+		try:
+			np_2, qrynp_2 = np_from_entry(entry_sql['except'], typenps, propertynps)
+		except Exception as e:
+			print(e)
+			return None
+
+	distinct = entry_sql['select'][0]
+
+	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
+				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdt=having_cdt, orderby_props=orderby_props,
+				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
+				  has_except=has_except, has_intersect=has_intersect, distinct=distinct)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps)
+
+	return final_np, final_qrynp
+
+
 class NP:
 	# inherits all properties from prev_np if specified, then replace them with any assigned properties
 	# dtypes:
@@ -979,20 +1226,22 @@ class NP:
 	#	prev_np:		NP
 	#	queried_props:	PROPERTYNP
 	#	table_ids:		int
-	#	join_cdts:		CDT
-	#	cdts:			CDT
+	#	join_cdts:		list(CDT)
+	#	cdts:			list(CDT)
 	#	cdt_linkers:	string
 	#	group_props:	PROPERTYNP
-	#	having_cdt:	CDT
+	#	having_cdt:		list(CDT)
 	#	orderby_props:	PROPERTYNP
 	#	orderby_order:	string
 	#	limit:			int
 	#	np_2:			NP
-	#	qrynp_2:			QRYNP
+	#	qrynp_2:		QRYNP
 	#	has_union:		bool
+	#	has_except		bool
+	#	has_intersect	bool
 	#	distinct:		bool
 	def __init__(self, prev_np=None, queried_props=None, table_ids=None, join_cdts=None,
-				 cdts=[], cdt_linkers=[], group_props=None, having_cdt=None,
+				 cdts=None, cdt_linkers=None, group_props=None, having_cdt=None,
 				 orderby_props=None, orderby_order=None, limit=None, np_2=None, qrynp_2=None, has_union=None,
 				 has_except=None, has_intersect=None, distinct=False):
 		if prev_np is not None:
@@ -1016,8 +1265,8 @@ class NP:
 			self.queried_props = None
 			self.table_ids = None
 			self.join_cdts = None
-			self.cdts = None
-			self.cdt_linkers = None
+			self.cdts = []
+			self.cdt_linkers = []
 			self.group_props = None
 			self.having_cdt = None
 			self.orderby_props = None
@@ -1170,9 +1419,12 @@ class QRYNP:
 		# having conditions
 		if self.np.having_cdt is not None:
 			z += ' having '
-			z += self.np.having_cdt.fetch_z(temp_tabname_bucket)
 			z_toks.append('having')
-			z_toks += self.np.having_cdt.fetch_z(temp_tabname_bucket).split(' ')
+			for hv_idx, item in enumerate(self.np.having_cdt):
+				z += item.fetch_z(temp_tabname_bucket)
+				z_toks += item.fetch_z(temp_tabname_bucket).split(' ')
+				if hv_idx < len(self.np.having_cdt)-1:
+					z += ', '
 
 		if self.np.orderby_props is not None:
 			if len(self.np.orderby_props) > 0:
@@ -1255,10 +1507,13 @@ class QRYNP:
 
 		if self.np.having_cdt is not None:
 			c_english += ' having '
-			c_english += self.np.having_cdt.c_english
+			for hv_idx, item in self.np.having_cdt:
+				c_english += item.c_english
+				if hv_idx < len(self.np.having_cdt)-1:
+					c_english += ' , '
 		if self.np.group_props is not None:
 			if len(self.np.group_props) > 0:
-				c_english += ', '
+				c_english += ' , '
 
 		if self.np.distinct:
 			c_english += 'all different values of '
@@ -1480,11 +1735,14 @@ class QRYNP:
 						groupby_sent += ' and '
 				if self.np.having_cdt is not None:
 					groupby_sent += ' where '
-					groupby_sent += self.np.having_cdt.c_english
+					for item in self.np.having_cdt:
+						groupby_sent += (item.c_english + ' , ')
+				else:
+					groupby_sent += ' , '
 
 				# if there are group-by clauses in query, specify the aggregators of queried props along with the
 				# group-by clause itself
-				groupby_sent += ', find '
+				groupby_sent += 'find '
 
 				if selected_in_groupby and self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
 					groupby_sent += 'top %d of ' % self.np.limit
@@ -1604,7 +1862,10 @@ class QRYNP:
 
 		if self.np.having_cdt is not None:
 			c_chinese += '满足'
-			c_chinese += self.np.having_cdt.c_chinese
+			for hv_idx, item in enumerate(self.np.having_cdt):
+				c_chinese += item.c_chinese
+				if hv_idx < len(self.np.having_cdt)-1:
+					c_chinese += '、'
 			c_chinese += '的'
 
 		for idx, prop in enumerate(self.np.group_props):
@@ -1789,7 +2050,10 @@ class QRYNP:
 					len(c_chinese), len(c_chinese) - 1)
 				if self.np.having_cdt is not None:
 					groupby_sent += '满足'
-					groupby_sent += self.np.having_cdt.c_chinese
+					for hv_idx, item in enumerate(self.np.having_cdt):
+						groupby_sent += self.np.having_cdt.c_chinese
+						if hv_idx < len(self.np.having_cdt)-1:
+							groupby_sent += '、'
 					groupby_sent += '的、'
 				for idx, prop in enumerate(self.np.group_props):
 					groupby_sent += prop.c_chinese.format('')
@@ -2191,7 +2455,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			prev_res = cursor.execute(prev_qrynp.z).fetchall()
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props, having_cdt=having_cdt)
+						group_props=groupby_props, having_cdt=[having_cdt])
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			if len(res) == 0 or len(res) == len(prev_res):
@@ -2287,7 +2551,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(chosen_prop)], table_ids=table_ids,
 							join_cdts=join_cdts,
 							cdts=where_cdts, cdt_linkers=where_linkers,
-							group_props=groupby_props, having_cdt=having_cdt,
+							group_props=groupby_props, having_cdt=[having_cdt],
 							orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 							orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
@@ -2332,7 +2596,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# we don't order-by when there is only one entry returned
 	cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers,
-				group_props=groupby_props, having_cdt=having_cdt,
+				group_props=groupby_props, having_cdt=[having_cdt],
 				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
@@ -2396,7 +2660,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# if all returned entries are the same, don't order by this column
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-				having_cdt=having_cdt, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+				having_cdt=[having_cdt], orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	res = cursor.execute(cur_qrynp.z).fetchall()
@@ -2521,7 +2785,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-						having_cdt=having_cdt)
+						having_cdt=[having_cdt])
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			len_res_prime = max(len(res), 1)
@@ -2549,7 +2813,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		# if no aggregators exist in queried properties
 		if flag:
 			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=having_cdt,
+						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
 						orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
 			rho = random.random()
 			if rho < 0.1:
@@ -2572,7 +2836,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	if np_2 is not None:
 		assert qrynp_2 is not None
 		cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=having_cdt,
+					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 		res_1 = cursor.execute(cur_qrynp.z).fetchall()
@@ -2588,7 +2852,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		print("post-subquery set~")
 
 	inspect_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=having_cdt,
+					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 					has_union=has_union, has_except=has_except, has_intersect=has_intersect)
 	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
@@ -2605,7 +2869,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	else:
 		distinct = False
 	final_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-				  cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=having_cdt,
+				  cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
 				  orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 				  has_union=has_union, has_except=has_except, has_intersect=has_intersect, distinct=distinct)
 	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
@@ -2962,38 +3226,40 @@ def format_sql_spider(np):
 	res['groupBy'] = []
 	for item in np.group_props:
 		res['groupBy'].append([0, item.meta_idx + 1, False])
+
+	res['having'] = []
 	if np.having_cdt is not None:
-		assert np.having_cdt.cmper.negative is False
-		hvg = [False, np.having_cdt.cmper.index, [0, [int(np.having_cdt.left.aggr), np.having_cdt.left.meta_idx + 1,
-													  np.having_cdt.left.distinct], None]]
-		# condition type must be  either cv or ci
-		if isinstance(np.having_cdt.right, list) or isinstance(np.having_cdt.right, numpy.ndarray):
-			if len(np.having_cdt.right) == 1:
-				if np.having_cdt.left.dtype in ['int', 'star']:
-					hvg.append(int(float(np.having_cdt.right[0].z)))
-				elif np.having_cdt.left.dtype == 'double':
-					hvg.append(float(np.having_cdt.right[0].z))
+
+		for hv_idx, item in enumerate(np.having_cdt):
+			assert item.cmper.negative is False
+			hvg = [False, item.cmper.index, [0, [int(item.left.aggr), item.left.meta_idx + 1,
+														  item.left.distinct], None]]
+			# condition type must be  either cv or ci
+			if isinstance(item.right, list) or isinstance(item.right, numpy.ndarray):
+				if len(item.right) == 1:
+					if item.left.dtype in ['int', 'star']:
+						hvg.append(int(float(item.right[0].z)))
+					elif item.left.dtype == 'double':
+						hvg.append(float(item.right[0].z))
+					else:
+						hvg.append(item.right[0].z)
+					hvg.append(None)
 				else:
-					hvg.append(np.having_cdt.right[0].z)
-				hvg.append(None)
+					assert (len(item.right) == 2)
+					if item.left.dtype in ['int', 'star']:
+						hvg.append(int(float(item.right[0].z)))
+						hvg.append(int(float(item.right[1].z)))
+					elif item.left.dtype == 'double':
+						hvg.append(float(item.right[0].z))
+						hvg.append(float(item.right[1].z))
+					else:
+						hvg.append(item.right[0].z)
+						hvg.append(item.right[1].z)
 			else:
-				assert (len(np.having_cdt.right) == 2)
-				if np.having_cdt.left.dtype in ['int', 'star']:
-					hvg.append(int(float(np.having_cdt.right[0].z)))
-					hvg.append(int(float(np.having_cdt.right[1].z)))
-				elif np.having_cdt.left.dtype == 'double':
-					hvg.append(float(np.having_cdt.right[0].z))
-					hvg.append(float(np.having_cdt.right[1].z))
-				else:
-					hvg.append(np.having_cdt.right[0].z)
-					hvg.append(np.having_cdt.right[1].z)
-		else:
-			assert (isinstance(np.having_cdt.right, QRYNP))
-			hvg.append(format_sql_spider(np.having_cdt.right.np))
-			hvg.append(None)
-		res['having'] = [hvg]
-	else:
-		res['having'] = []
+				assert (isinstance(item.right, QRYNP))
+				hvg.append(format_sql_spider(item.right.np))
+				hvg.append(None)
+			res['having'].append(hvg)
 
 	if np.limit is not None:
 		res['limit'] = int(np.limit)
