@@ -17,6 +17,7 @@ from collections import defaultdict
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--db_id', type=int, default=0)
 parser.add_argument('-v', '--verbose', type=bool, default=False, help='print verbose info')
+parser.add_argument('-m', '--mode', type=str, default='run', help='which mode to run')
 args = parser.parse_args()
 db_ids_to_ignore = [124, 131]
 
@@ -97,7 +98,7 @@ def cut_value_for_like(v, mode):
 transform2distribution = transform2distribution_proportional
 
 DATABASE_PATH = './spider/spider/database'
-TABLE_MATADATA_PATH = './spider/spider/tables_mod.json'
+TABLE_METADATA_PATH = './spider/spider/tables_mod.json'
 SAVE_PATH = './saved_results/'
 
 tableid = 0
@@ -170,7 +171,7 @@ def _avg(x):
 	assert (isinstance(x, PROPERTYNP))
 	assert (x.dtype in CALCULABLE_DTYPES)
 	# the property to be averaged must be single
-	c_english = 'the average of {0} %s' % x.c_english
+	c_english = 'the average of %s' % x.c_english
 	c_chinese = '%s的平均值' % x.c_chinese
 	z = 'AVG ( %s )' % x.z
 	return c_english, c_chinese, z, False
@@ -1002,35 +1003,46 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		aggr = item[0]
 		if item[1][0] != 0:
 			return None
-		pid = item[1][1][1]+1
+		pid = item[1][1][1]-1
 		aggr_distinct = item[1][1][2]
 		if item[1][2] is not None:
 			return None
-		prop = copy.deepcopy(propertynps[pid])  # !!!
+		if pid < 0:
+			prop = copy.deepcopy(STAR_PROP)
+		else:
+			prop = copy.deepcopy(propertynps[pid])  # !!!
 		if aggr == 3:
 			prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
 		else:
 			prop.set_aggr(aggr)
 		queried_props.append(prop)
 
-	table_ids = [item[1] for item in entry_sql['from']['table_units']]
+	table_ids = []
+	for item in entry_sql['from']['table_units']:
+		if item[0] == 'sql':
+			return None
+		elif item[0] == 'table_unit':
+			table_ids.append(item[1])
+		else:
+			raise AssertionError
 
 	join_cdts = []
 	for cond in entry_sql['from']['conds']:
-		assert cond[1] == 1
+		assert cond[1] == 2
 
-		pid1 = cond[2][1][1]+1
-		pid2 = cond[3][1]+1
+		pid1 = cond[2][1][1]-1
+		pid2 = cond[3][1]-1
+		assert pid1 >= 0 and pid2 >= 0
 		prop1 = copy.deepcopy(propertynps[pid1])
 		prop2 = copy.deepcopy(propertynps[pid2])
 
 		cmper = copy.deepcopy(CMPERS[1])  # always use equality comparer
 		c_english = propertynps[pid1].c_english.format(
-			typenps[pid1].c_english + '\'s ') + cmper.c_english.format(
-			propertynps[pid2].c_english.format(typenps[pid2].c_english + '\'s '))
+			typenps[prop1.table_id].c_english + '\'s ') + cmper.c_english.format(
+			propertynps[pid2].c_english.format(typenps[prop2.table_id].c_english + '\'s '))
 		c_chinese = propertynps[pid1].c_chinese.format(
-			typenps[pid1].c_chinese + '的') + cmper.c_chinese.format(
-			propertynps[pid2].c_chinese.format(typenps[pid2].c_chinese + '的'))
+			typenps[prop1.table_id].c_chinese + '的') + cmper.c_chinese.format(
+			propertynps[pid2].c_chinese.format(typenps[prop2.table_id].c_chinese + '的'))
 		z = propertynps[pid1].z + cmper.z.format(propertynps[pid2].z)
 		fetched_cdt = CDT(c_english, c_chinese, z, prop1, prop2, cmper)
 		join_cdts.append(fetched_cdt)
@@ -1052,19 +1064,24 @@ def np_from_entry(entry_sql, typenps, propertynps):
 				cmper = copy.deepcopy(item)
 				break
 		assert cmper is not None
+		if negative:
+			cmper.set_negative()
 
 		# does not support calculation operators
 		if cond[2][0] != 0:
 			return None
 
-		pid1 = cond[2][1][1]+1
+		pid1 = cond[2][1][1]-1
+		assert cond[2][1][0] == 0 and cond[2][1][2] is False
+		assert pid1 >= 0
 		chosen_prop = copy.deepcopy(propertynps[pid1])
 		value = cond[3]
 
 		if isinstance(value, list):
 			assert len(value) == 3
 			assert cond[4] is None
-			pid2 = value[1]+1
+			pid2 = value[1]-1
+			assert pid2 >= 0
 			prop2 = copy.deepcopy(propertynps[pid2])
 			c_english = pid1.c_english.format('') + cmper.c_english.format(pid2.c_english.format(''))
 			c_chinese = pid1.c_chinese.format('') + cmper.c_chinese.format(pid2.c_chinese.format(''))
@@ -1103,12 +1120,14 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
 			cdt = CDT(c_english, c_chinese, z, chosen_prop, value, cmper)
 			cdts.append(cdt)
-	assert len(cdts) == (len(cdt_linkers) + 1)
+	if len(cdts) > 0:
+		assert len(cdts) == (len(cdt_linkers) + 1)
 
 	group_props = []
 	for item in entry_sql['groupBy']:
 		assert item[0] == 0 and item[2] is False
-		gb_pid = item[1]+1
+		gb_pid = item[1]-1
+		assert gb_pid >= 0
 		gb_prop = copy.deepcopy(propertynps[gb_pid])
 		group_props.append(gb_prop)
 
@@ -1128,8 +1147,17 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		if cond[2][0] != 0:
 			return None
 
-		pid1 = cond[2][1][1] + 1
-		chosen_prop = copy.deepcopy(propertynps[pid1])
+		pid1 = cond[2][1][1] - 1
+		aggr = cond[2][1][0]
+		aggr_distinct = cond[2][1][2]
+		if pid1 < 0:
+			chosen_prop = copy.deepcopy(STAR_PROP)
+		else:
+			chosen_prop = copy.deepcopy(propertynps[pid1])
+		if aggr == 3:
+			chosen_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
+		else:
+			chosen_prop.set_aggr(aggr)
 		value = cond[3]
 
 		assert not isinstance(value, list)
@@ -1173,9 +1201,17 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		for item in entry_sql['orderBy'][1]:
 			if item[0] != 0:
 				return None
-			ob_pid = item[1][1]+1
+			assert item[1][2] is False
+			aggr = item[1][0]
+			ob_pid = item[1][1]-1
 			ob_prop = copy.deepcopy(propertynps[ob_pid])
+			if aggr == 3:
+				ob_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
+			else:
+				ob_prop.set_aggr(aggr)
 			orderby_props.append(ob_prop)
+	else:
+		orderby_props = None
 
 	limit = entry_sql['limit']
 	has_union = False
@@ -1214,8 +1250,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdt=having_cdt, orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
 				  has_except=has_except, has_intersect=has_intersect, distinct=distinct)
-	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps)
-
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=True)
 	return final_np, final_qrynp
 
 
@@ -1417,7 +1452,7 @@ class QRYNP:
 				z_toks += (' ' + ', '.join(groupby_propnames) + ' ').split()
 
 		# having conditions
-		if self.np.having_cdt is not None:
+		if self.np.having_cdt is not None and len(self.np.having_cdt) > 0:
 			z += ' having '
 			z_toks.append('having')
 			for hv_idx, item in enumerate(self.np.having_cdt):
@@ -2973,7 +3008,7 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, a
 def build_spider_dataset(num):
 	valid = True  # if there exists empty columns in the database, then the database is assumed invalid, reported
 	# and discarded
-	with open(TABLE_MATADATA_PATH, 'r') as fp:
+	with open(TABLE_METADATA_PATH, 'r') as fp:
 		json_file = json.load(fp)
 	meta = json_file[num]
 	database_name = DATABASE_PATH + '/%s/%s.sqlite' % (meta['db_id'], meta['db_id'])
@@ -3651,12 +3686,68 @@ def hit(db_idx, max_iter, verbose):
 	fp.close()
 
 
+def convert(file_path):
+	with open(TABLE_METADATA_PATH, 'r') as fp:
+		meta_data = json.load(fp)
+
+	last_dbid = None
+	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, valid_database, \
+	conn, crsr, num_queries = None, None, None, None, None, None, None, None, None, None, None
+
+	with open(file_path, 'r') as fp:
+		sql_dcts = json.load(fp)
+
+	skip_list = [6]
+	res_json = []
+	for dct_idx, dct in enumerate(sql_dcts):
+		if dct_idx in skip_list:
+			continue
+		if dct_idx % 200 == 1:
+			print("turn %d begins!" % dct_idx)
+		if dct['db_id'] != last_dbid:
+			last_dbid = dct['db_id']
+			db_num = None
+			for db_idx, item in enumerate(meta_data):
+				if item['db_id'] == dct['db_id']:
+					db_num = db_idx
+					break
+			assert db_num is not None
+			database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, \
+			valid_database, conn, crsr, num_queries = build_spider_dataset(db_num)
+		entry_sql = dct['sql']
+		pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
+		if pack is None:
+			print("Unexpressable_entry_occurred!")
+			print(dct)
+			print("")
+			continue
+		for line in qrynp.c_english_sequence:
+			print(line)
+		print("Gold: "+dct['question'])
+		print("")
+		res = {'sql': dct['query'], 'query_toks': dct['query_toks'], 'query_toks_no_value': dct['query_toks_no_value'],
+			   'gold_question': dct['question'], 'canonical_ce': qrynp.c_english_verbose,
+			   'canonical_ce_sequence': qrynp.c_english_sequence}
+		res_json.append(res)
+	with open('SPIDER_canonicals.json', 'w') as fp:
+		json.dump(res_json, fp)
+	print("convertion finished!")
+
+
 if __name__ == '__main__':
 	begin = time.time()
 	idx = args.db_id
-	# main(idx, args.verbose)
-	# debug(True)
-	hit(idx, 10000, False)
+	if args.mode == 'run':
+		main(idx, args.verbose)
+	elif args.mode == 'debug':
+		debug(True)
+	elif args.mode == 'hit':
+		hit(idx, 10000, False)
+	elif args.mode == 'convert':
+		convert('./spider/spider/train_spider.json')
+	else:
+		print("Assigned mode does not match with any programs!")
+		raise AssertionError
 	end = time.time()
 
 	# display the time spent in this run of query-generation
