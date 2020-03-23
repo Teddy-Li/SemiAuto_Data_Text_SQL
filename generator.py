@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--db_id', type=int, default=0)
 parser.add_argument('-v', '--verbose', type=bool, default=False, help='print verbose info')
 parser.add_argument('-m', '--mode', type=str, default='run', help='which mode to run')
+parser.add_argument('-s', '--start_from', type=int, default=0, help='start_from for #convert# mode')
 args = parser.parse_args()
 db_ids_to_ignore = [124, 131]
 
@@ -169,7 +170,7 @@ calc_num_queries_via_stats = calc_num_queries_via_stats_regressed
 # data aggregation
 def _avg(x):
 	assert (isinstance(x, PROPERTYNP))
-	assert (x.dtype in CALCULABLE_DTYPES)
+	#assert (x.dtype in CALCULABLE_DTYPES)
 	# the property to be averaged must be single
 	c_english = 'the average of %s' % x.c_english
 	c_chinese = '%s的平均值' % x.c_chinese
@@ -179,7 +180,7 @@ def _avg(x):
 
 def _min(x):
 	assert (isinstance(x, PROPERTYNP))
-	assert (x.dtype in SUBTRACTABLE_DTYPES)
+	#assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the smallest %s' % x.c_english
 	c_chinese = '%s的最小值' % x.c_chinese
 	z = 'MIN ( %s )' % x.z
@@ -188,7 +189,7 @@ def _min(x):
 
 def _max(x):
 	assert (isinstance(x, PROPERTYNP))
-	assert (x.dtype in SUBTRACTABLE_DTYPES)
+	#assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the largest %s' % x.c_english
 	c_chinese = '%s的最大值' % x.c_chinese
 	z = 'MAX ( %s )' % x.z
@@ -197,7 +198,7 @@ def _max(x):
 
 def _sum(x):
 	assert (isinstance(x, PROPERTYNP))
-	assert (x.dtype in CALCULABLE_DTYPES)
+	#assert (x.dtype in CALCULABLE_DTYPES)
 	c_english = 'the sum of %s' % x.c_english
 	c_chinese = '%s的总和' % x.c_chinese
 	z = 'SUM ( %s )' % x.z
@@ -998,17 +999,28 @@ class CDT(BASENP):
 # convert a query in json format into a NP type object
 # pid needs to +1 because 0 is occupied by * in SPIDER format
 def np_from_entry(entry_sql, typenps, propertynps):
+	table_ids = []
+	for item in entry_sql['from']['table_units']:
+		if item[0] == 'sql':
+			return "'from' not a table!"
+		elif item[0] == 'table_unit':
+			table_ids.append(item[1])
+		else:
+			raise AssertionError
+
+	#assert len(table_ids) <= 2
+
 	queried_props = []
 	for item in entry_sql['select'][1]:
 		aggr = item[0]
 		if item[1][0] != 0:
-			return None
+			return "calculation operator in select!"
 		pid = item[1][1][1]-1
 		aggr_distinct = item[1][1][2]
-		if item[1][2] is not None:
-			return None
+		assert item[1][2] is None
 		if pid < 0:
 			prop = copy.deepcopy(STAR_PROP)
+			prop.table_id = table_ids
 		else:
 			prop = copy.deepcopy(propertynps[pid])  # !!!
 		if aggr == 3:
@@ -1017,18 +1029,14 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			prop.set_aggr(aggr)
 		queried_props.append(prop)
 
-	table_ids = []
-	for item in entry_sql['from']['table_units']:
-		if item[0] == 'sql':
-			return None
-		elif item[0] == 'table_unit':
-			table_ids.append(item[1])
-		else:
-			raise AssertionError
-
 	join_cdts = []
 	for cond in entry_sql['from']['conds']:
+		if isinstance(cond, str):
+			assert cond == 'and'
+			continue
 		assert cond[1] == 2
+		assert cond[2][0] == 0 and cond[2][1][0] == 0 and cond[2][1][2] is False and cond[2][2] is None
+		assert cond[3][0] == 0 and cond[3][2] is False
 
 		pid1 = cond[2][1][1]-1
 		pid2 = cond[3][1]-1
@@ -1056,7 +1064,6 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			continue
 
 		negative = cond[0]
-
 		cmper = None
 		cmper_idx = cond[1]
 		for item in CMPERS:
@@ -1069,10 +1076,10 @@ def np_from_entry(entry_sql, typenps, propertynps):
 
 		# does not support calculation operators
 		if cond[2][0] != 0:
-			return None
+			return "calculation operator in 'where'!"
 
 		pid1 = cond[2][1][1]-1
-		assert cond[2][1][0] == 0 and cond[2][1][2] is False
+		assert cond[2][1][0] == 0 and cond[2][1][2] is False and cond[2][2] is None
 		assert pid1 >= 0
 		chosen_prop = copy.deepcopy(propertynps[pid1])
 		value = cond[3]
@@ -1083,21 +1090,26 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			pid2 = value[1]-1
 			assert pid2 >= 0
 			prop2 = copy.deepcopy(propertynps[pid2])
-			c_english = pid1.c_english.format('') + cmper.c_english.format(pid2.c_english.format(''))
-			c_chinese = pid1.c_chinese.format('') + cmper.c_chinese.format(pid2.c_chinese.format(''))
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(prop2.c_english.format(''))
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(prop2.c_chinese.format(''))
 			cdt = CDT(c_english, c_chinese, None, chosen_prop, prop2, cmper)
 			cdts.append(cdt)
 
 		elif isinstance(value, dict):
-			assert cond[4] is None
+			if cond[4] is not None:
+				return "between operator with sub-query and value!"
 			try:
-				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps)
-			except Exception as e:
-				print(e)
-				return None
+				pack = np_from_entry(value, typenps, propertynps)
+			except KeyError as e:
+				raise
+			if isinstance(pack, str):
+				return pack
+			else:
+				np_2, qrynp_2 = pack
+
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
 				' ( ' + qrynp_2.c_english + ' ) ')
-			c_chinese =chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
 			z = chosen_prop.z + cmper.z.format(' ( ' + qrynp_2.z + ' ) ')
 			cdt = CDT(c_english, c_chinese, z, chosen_prop, qrynp_2, cmper)
 			cdts.append(cdt)
@@ -1105,16 +1117,22 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			try:
 				value_str = str(value)
 				value_z = '#' + value_str + '#'
+				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
 			except Exception as e:
 				raise
 			if cond[4] is not None:
 				try:
+					value_2 = cond[4]
 					value_str_2 = str(cond[4])
 					value_z_2 = '#' + value_str_2 + '#'
+					value_2 = VALUENP(str(value_2), str(value_2), str(value_2), chosen_prop.dtype)
 				except Exception as e:
 					raise
+				value = [value, value_2]
 				value_str = [value_str, value_str_2]
 				value_z = [value_z, value_z_2]
+			else:
+				value = [value]
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_str)
 			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_str)
 			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
@@ -1133,7 +1151,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 
 	having_cdt = []
 	if len(entry_sql['having']) > 1:
-		return None
+		return "more than one having condition!"
 	for cond in entry_sql['having']:
 		assert cond[0] is False
 		cmper = None
@@ -1145,13 +1163,14 @@ def np_from_entry(entry_sql, typenps, propertynps):
 
 		# does not support calculation operators
 		if cond[2][0] != 0:
-			return None
+			return "calculation operator in 'having' condition!"
 
 		pid1 = cond[2][1][1] - 1
 		aggr = cond[2][1][0]
 		aggr_distinct = cond[2][1][2]
 		if pid1 < 0:
 			chosen_prop = copy.deepcopy(STAR_PROP)
+			chosen_prop.table_id = table_ids
 		else:
 			chosen_prop = copy.deepcopy(propertynps[pid1])
 		if aggr == 3:
@@ -1165,9 +1184,8 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			assert cond[4] is None
 			try:
 				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps)
-			except Exception as e:
-				print(e)
-				return None
+			except KeyError as e:
+				raise
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
 				' ( ' + qrynp_2.c_english + ' ) ')
 			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
@@ -1178,16 +1196,22 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			try:
 				value_str = str(value)
 				value_z = '#' + value_str + '#'
+				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
 			except Exception as e:
 				raise
 			if cond[4] is not None:
 				try:
+					value_2 = cond[4]
 					value_str_2 = str(cond[4])
 					value_z_2 = '#' + value_str_2 + '#'
+					value_2 = VALUENP(str(value_2), str(value_2), str(value_2), chosen_prop.dtype)
 				except Exception as e:
 					raise
+				value = [value, value_2]
 				value_str = [value_str, value_str_2]
 				value_z = [value_z, value_z_2]
+			else:
+				value = [value]
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_str)
 			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_str)
 			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
@@ -1200,11 +1224,15 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		orderby_order = entry_sql['orderBy'][0]
 		for item in entry_sql['orderBy'][1]:
 			if item[0] != 0:
-				return None
+				return "calculation in 'orderBy' condition!"
 			assert item[1][2] is False
 			aggr = item[1][0]
 			ob_pid = item[1][1]-1
-			ob_prop = copy.deepcopy(propertynps[ob_pid])
+			if ob_pid < 0:
+				ob_prop = copy.deepcopy(STAR_PROP)
+				ob_prop.table_id = table_ids
+			else:
+				ob_prop = copy.deepcopy(propertynps[ob_pid])
 			if aggr == 3:
 				ob_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
 			else:
@@ -1223,26 +1251,38 @@ def np_from_entry(entry_sql, typenps, propertynps):
 	if entry_sql['intersect'] is not None:
 		assert entry_sql['union'] is None and entry_sql['except'] is None
 		try:
-			np_2, qrynp_2 = np_from_entry(entry_sql['intersect'], typenps, propertynps)
-		except Exception as e:
-			print(e)
-			return None
+			pack = np_from_entry(entry_sql['intersect'], typenps, propertynps)
+			has_intersect = True
+		except KeyError as e:
+			raise
+		if isinstance(pack, str):
+			return pack
+		else:
+			np_2, qrynp_2 = pack
 
 	if entry_sql['union'] is not None:
 		assert entry_sql['intersect'] is None and entry_sql['except'] is None
 		try:
-			np_2, qrynp_2 = np_from_entry(entry_sql['union'], typenps, propertynps)
-		except Exception as e:
-			print(e)
-			return None
+			pack = np_from_entry(entry_sql['union'], typenps, propertynps)
+			has_union = True
+		except KeyError as e:
+			raise
+		if isinstance(pack, str):
+			return pack
+		else:
+			np_2, qrynp_2 = pack
 
 	if entry_sql['except'] is not None:
 		assert entry_sql['union'] is None and entry_sql['intersect'] is None
 		try:
-			np_2, qrynp_2 = np_from_entry(entry_sql['except'], typenps, propertynps)
-		except Exception as e:
-			print(e)
-			return None
+			pack = np_from_entry(entry_sql['except'], typenps, propertynps)
+			has_except = True
+		except KeyError as e:
+			raise
+		if isinstance(pack, str):
+			return pack
+		else:
+			np_2, qrynp_2 = pack
 
 	distinct = entry_sql['select'][0]
 
@@ -1542,7 +1582,7 @@ class QRYNP:
 
 		if self.np.having_cdt is not None:
 			c_english += ' having '
-			for hv_idx, item in self.np.having_cdt:
+			for hv_idx, item in enumerate(self.np.having_cdt):
 				c_english += item.c_english
 				if hv_idx < len(self.np.having_cdt)-1:
 					c_english += ' , '
@@ -2086,7 +2126,7 @@ class QRYNP:
 				if self.np.having_cdt is not None:
 					groupby_sent += '满足'
 					for hv_idx, item in enumerate(self.np.having_cdt):
-						groupby_sent += self.np.having_cdt.c_chinese
+						groupby_sent += item.c_chinese
 						if hv_idx < len(self.np.having_cdt)-1:
 							groupby_sent += '、'
 					groupby_sent += '的、'
@@ -3697,13 +3737,43 @@ def convert(file_path):
 	with open(file_path, 'r') as fp:
 		sql_dcts = json.load(fp)
 
-	skip_list = [6]
+	skip_list = [6, 425, 426, 437, 438, 521, 522, 629, 630, 631, 632, 635, 636, 639, 640, 660, 661, 921, 922, 947,
+				 948, 955, 956, 1038, 1284, 1320, 1416, 1417, 1430, 1431, 1432, 1433, 1434, 1435, 1438, 1439, 1454,
+				 1455, 1502, 1687, 1688, 1731, 1802, 1803, 1814, 1815, 1820, 1821, 1832, 1835, 1838, 1928, 2093,
+				 2094, 2147, 2175, 2176, 2211, 2212, 2227, 2228, 2229, 2230, 2231, 2232, 2380, 2381, 2382, 2383,
+				 2472, 2473, 2478, 2479, 2480, 2481, 2524, 2525, 2651, 2684, 2685, 2724, 2725, 2730, 2731, 2814,
+				 2815, 2962, 2963, 2996, 2997, 3068, 3069, 3078, 3079, 3207, 3208, 3251, 3252, 3253, 3254, 3275,
+				 3276, 3277, 3278, 3283, 3284, 3285, 3286, 3295, 3296, 3307, 3308, 3321, 3322, 3323, 3324, 3327,
+				 3328, 3335, 3336, 3527, 3528, 3655, 3656, 3920, 3921, 3940, 3941, 3942, 3943, 3950, 3951, 3972,
+				 3973, 3974, 3975, 3988, 3989, 4108, 4109, 4324, 4325, 4334, 4335, 4336, 4337, 4348, 4349, 4380,
+				 4381, 4608, 4609, 4697, 4698, 4763, 4764, 4777, 4778, 4779, 4780, 4785, 4786, 4787, 4788, 4815,
+				 4816, 4817, 4818, 5008, 5009, 5146, 5147, 5184, 5185, 5188, 5189, 5190, 5191, 5204, 5205, 5230,
+				 5231, 5238, 5239, 5242, 5243, 5256, 5257, 5262, 5263, 5666, 5718, 5719, 5736, 5737, 5740, 5741,
+				 5742, 5743, 5744, 5745, 5746, 5747, 5748, 5749, 5752, 5753, 5766, 5767, 5864, 5865, 5931, 5932,
+				 6047, 6048, 6276, 6277, 6381, 6485, 6486, 6487, 6488, 6513, 6514, 6614, 6795, 6796, 6871, 6872,
+				 6958, 427, 428, 429, 430, 643, 644, 645, 646, 889, 890, 923, 924, 969, 970, 1288, 1792, 1793,
+				 1794, 1795, 1840, 2081, 2082, 2171, 2172, 2173, 2174, 2177, 2178, 2179, 2180, 2181, 2182, 2183,
+				 2184, 2185, 2186, 2187, 2188, 2199, 2200, 2207, 2208, 2209, 2210, 2219, 2220, 2221, 2222, 2223,
+				 2224, 2225, 2226, 2484, 2485, 2836, 2838, 2839, 2848, 2850, 2874, 2875, 2876, 2877, 2878, 2879,
+				 2880, 2881, 2882, 2883, 2884, 2885, 2886, 2887, 2888, 2889, 2894, 2895, 2896, 2897, 2908, 2909,
+				 2910, 2911, 3125, 3126, 3293, 3294, 3697, 3698, 3725, 3986, 3987, 3990, 3991, 4266, 4267, 4268,
+				 4269, 4270, 4271, 4272, 4273, 4274, 4275, 4276, 4277, 4278, 4279, 4300, 4301, 4302, 4303, 4304,
+				 4305, 4306, 4307, 4308, 4309, 4310, 4311, 4312, 4313, 4366, 4367, 4523, 4524, 4833, 4834, 4916,
+				 4917, 4922, 4923, 4924, 4925, 4928, 4929, 5158, 5159, 5440, 5441, 5562, 5563, 5568, 5569, 5570,
+				 5571, 5572, 5573, 5574, 5575, 5576, 5577, 5588, 5589, 5594, 5595, 5598, 5599, 5702, 5703, 5704,
+				 5705, 5760, 5761, 5778, 5779, 5794, 5795, 5959, 5960, 6079, 6080, 6081, 6082, 6085, 6086, 6107,
+				 6108, 6109, 6110, 6111, 6112, 6137, 6138, 6141, 6142, 6619, 6797, 6798, 6799, 6800, 6955]
+	unexpressable_cnt = 0
+	unexpressable_entries = []
+	error_bucket = {}
 	res_json = []
-	for dct_idx, dct in enumerate(sql_dcts):
+	for _, dct in enumerate(sql_dcts[args.start_from:]):
+		dct_idx = _ + args.start_from
 		if dct_idx in skip_list:
 			continue
-		if dct_idx % 200 == 1:
+		if dct_idx % 500 == 1:
 			print("turn %d begins!" % dct_idx)
+			print(skip_list)
 		if dct['db_id'] != last_dbid:
 			last_dbid = dct['db_id']
 			db_num = None
@@ -3715,22 +3785,50 @@ def convert(file_path):
 			database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, \
 			valid_database, conn, crsr, num_queries = build_spider_dataset(db_num)
 		entry_sql = dct['sql']
-		pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
-		if pack is None:
+		#pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
+
+		try:
+			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
+		except KeyError as e:
+			print("False gold SQL: %d" % dct_idx)
+			print(dct['query'])
+			print(entry_sql['from']['table_units'])
+			if dct_idx not in skip_list:
+				skip_list.append(dct_idx)
+			raise
+		if isinstance(pack, str):
 			print("Unexpressable_entry_occurred!")
-			print(dct)
+			print(dct['query'])
+			unexpressable_entries.append([pack, dct['query']])
 			print("")
+			if pack not in error_bucket:
+				error_bucket[pack] = 1
+			else:
+				error_bucket[pack] += 1
+			unexpressable_cnt += 1
 			continue
-		for line in qrynp.c_english_sequence:
-			print(line)
-		print("Gold: "+dct['question'])
-		print("")
+		#elif isinstance(pack, None):
+		#	continue
+		else:
+			np, qrynp = pack
+		#for line in qrynp.c_english_sequence:
+		#	print(line)
+		#print("Gold: "+dct['question'])
+		#print("")
 		res = {'sql': dct['query'], 'query_toks': dct['query_toks'], 'query_toks_no_value': dct['query_toks_no_value'],
 			   'gold_question': dct['question'], 'canonical_ce': qrynp.c_english_verbose,
 			   'canonical_ce_sequence': qrynp.c_english_sequence}
 		res_json.append(res)
+	print(len(skip_list))
+	print("unexpressable_cnt: ", unexpressable_cnt)
+	print("error bucket: ")
+	for item in error_bucket:
+		print(item, ': ', error_bucket[item])
+	print("")
 	with open('SPIDER_canonicals.json', 'w') as fp:
-		json.dump(res_json, fp)
+		json.dump(res_json, fp, indent=4)
+	with open('SPIDER_unexpressables.json', 'w') as fp:
+		json.dump(res_json, fp, indent=4)
 	print("convertion finished!")
 
 
