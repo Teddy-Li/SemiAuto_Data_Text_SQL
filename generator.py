@@ -823,6 +823,7 @@ class TYPENP(BASENP):
 		self.properties = properties
 		self.valid = True
 		self.clones = []
+		self.is_edge = False
 
 	def print(self):
 		print("c_english: ", self.c_english)
@@ -864,6 +865,12 @@ class VALUENP(BASENP):
 
 	def __lt__(self, other):
 		if self.z < other.z:
+			return True
+		else:
+			return False
+
+	def __eq__(self, other):
+		if self.z == other.z:
 			return True
 		else:
 			return False
@@ -3054,23 +3061,10 @@ def build_spider_dataset(num):
 	database_name = DATABASE_PATH + '/%s/%s.sqlite' % (meta['db_id'], meta['db_id'])
 	print(meta['db_id'])
 	propertynps = []
-	# disgard the '*'
-	for idx, prop_name in enumerate(meta['column_names']):
-		table_idx = prop_name[0]
-		if table_idx < 0:
-			# print('star: ', idx, prop_name)
-			continue
-		c_english = '{0}$' + prop_name[1] + '$'
-		c_chinese = '{0}$' + prop_name[1] + '$'
-		col_z = meta['column_names_original'][idx][1]
-		# if the name contains ' ', wrap it with brackets
-		if ' ' in col_z:
-			col_z = '[' + col_z + ']'
-		z = '{0}%s' % col_z
-		dtype = meta['column_types'][idx]
-		propertynps.append(
-			PROPERTYNP(c_english=c_english, c_chinese=c_chinese, z=z, dtype=dtype, table_id=table_idx,
-					   overall_idx=idx - 1, meta_idx=idx - 1))
+
+	conn = sqlite3.connect(database_name)
+	# conn.create_function('FIXENCODING', 1, lambda s: str(s).encode('latin_1'))
+	crsr = conn.cursor()
 
 	typenps = []
 	for idx, tab_name in enumerate(meta['table_names']):
@@ -3086,7 +3080,61 @@ def build_spider_dataset(num):
 				properties.append(prop_idx - 1)
 		typenps.append(TYPENP(c_english=c_english, c_chinese=c_chinese, z=z, overall_idx=idx, properties=properties))
 
+	# disgard the '*'
+	for idx, prop_name in enumerate(meta['column_names']):
+		table_idx = prop_name[0]
+		if table_idx < 0:
+			# print('star: ', idx, prop_name)
+			continue
+		c_english = '{0}$' + prop_name[1] + '$'
+		c_chinese = '{0}$' + prop_name[1] + '$'
+		col_z = meta['column_names_original'][idx][1]
+		# if the name contains ' ', wrap it with brackets
+		if ' ' in col_z:
+			col_z = '[' + col_z + ']'
+		z = '{0}%s' % col_z
+		dtype = meta['column_types'][idx]
+		cur_prop = PROPERTYNP(c_english=c_english, c_chinese=c_chinese, z=z, dtype=dtype, table_id=table_idx,
+					   overall_idx=idx - 1, meta_idx=idx - 1)
+		query_all = 'select %s from %s' % (cur_prop.z.format(''), typenps[cur_prop.table_id].z)
+		try:
+			all_values = crsr.execute(query_all).fetchall()
+		except Exception as e:
+			print(e)
+			print(query_all)
+			raise
+		temp_all_values = []
+		for item in all_values:
+			try:
+				item_str = str(item)
+				temp_all_values.append(item_str)
+			except Exception as e:
+				continue
+		if is_unique(temp_all_values):
+			cur_prop.is_unique = True
+		else:
+			cur_prop.is_unique = False
+		propertynps.append(cur_prop)
+
 	fks = meta['foreign_keys']  # a.k.a the prop_rels
+	'''
+	typenp_unique_fk_num = [0]*len(typenps)
+
+	for pair in fks:
+		assert pair[0]-1 >= 0 and pair[1]-1 >= 0
+		prop1 = propertynps[pair[0]-1]
+		prop2 = propertynps[pair[1]-1]
+		tid1 = prop1.table_id
+		tid2 = prop2.table_id
+		if prop1.is_unique:
+			typenp_unique_fk_num[tid2] += 1
+		if prop2.is_unique:
+			typenp_unique_fk_num[tid1] += 1
+
+	for tid, item in enumerate(typenp_unique_fk_num):
+		if item == 2:
+			typenps[tid].is_edge = True
+	'''
 	for pair in fks:
 		if meta['column_names'][pair[0]][0] == meta['column_names'][pair[1]][0]:
 			new_typenp = copy.deepcopy(typenps[meta['column_names'][pair[0]][0]])
@@ -3133,10 +3181,6 @@ def build_spider_dataset(num):
 				nm_property_matrix[j][i] += 1 * NAME_PAIR_WEIGHT
 				nm_type_matrix[propertynps[i].table_id][propertynps[j].table_id] += 1 * NAME_PAIR_WEIGHT
 				nm_type_matrix[propertynps[j].table_id][propertynps[i].table_id] += 1 * NAME_PAIR_WEIGHT
-
-	conn = sqlite3.connect(database_name)
-	# conn.create_function('FIXENCODING', 1, lambda s: str(s).encode('latin_1'))
-	crsr = conn.cursor()
 
 	for prop in propertynps:
 		# if prop.dtype == 'varchar(1000)':
