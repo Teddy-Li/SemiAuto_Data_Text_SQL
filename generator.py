@@ -394,7 +394,7 @@ def choose_proppair_for_cdt(left_available_prop_ids, right_available_prop_ids, p
 # 
 # use_aggr_for_left_prop is equal to true iff it is a having condition
 def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_prop=False, assigned_prop=None,
-						   no_negative=False):
+						   no_negative=False, type_to_count=None):
 	if assigned_prop is None:
 		# the left-value in where conditions cannot have aggregators
 		scores = [0] * len(available_prop_ids)
@@ -413,6 +413,12 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 			chosen_prop.set_aggr(aggr_id)
 	else:
 		chosen_prop = assigned_prop
+
+	# if there are single2multiple foreign key relationships between the multiple tables, the
+	if chosen_prop.type == 'star' and chosen_prop.aggr == 3 and type_to_count is not None:
+		assert isinstance(type_to_count, TYPENP)
+		chosen_prop.c_english = ' the number of %s ' % type_to_count.c_english
+		chosen_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 
 	if chosen_prop.aggr == 3:
 		assert (AGGREGATION_FUNCTIONS[3] == _uniquecount)
@@ -595,14 +601,13 @@ def calc_group_score(dtype, values):
 		return 0
 	value_buckets = {}
 	for val in values:
-		if val not in value_buckets:
-			value_buckets[val] = 1
+		if val.z not in value_buckets:
+			value_buckets[val.z] = 1
 		else:
-			value_buckets[val] += 1
+			value_buckets[val.z] += 1
 	value_dist = []
-	for val in value_buckets:
-		value_dist.append(float(value_buckets[val]) / len(values))
-
+	for val_z in value_buckets:
+		value_dist.append(float(value_buckets[val_z]) / len(values))
 	score = entropy(value_dist)
 	return score
 
@@ -911,6 +916,7 @@ class PROPERTYNP(BASENP):
 		self.from_sum = from_sum
 		self.from_cnt = from_cnt
 		self.is_unique = is_unique
+		self.is_primary = False
 		self.valid = True
 		self.clones = []
 		self.distinct = False  # for aggregator 'COUNT', means whether it is 'count' or 'distinct count'
@@ -1015,27 +1021,6 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		else:
 			raise AssertionError
 
-	#assert len(table_ids) <= 2
-
-	queried_props = []
-	for item in entry_sql['select'][1]:
-		aggr = item[0]
-		if item[1][0] != 0:
-			return "calculation operator in select!"
-		pid = item[1][1][1]-1
-		aggr_distinct = item[1][1][2]
-		assert item[1][2] is None
-		if pid < 0:
-			prop = copy.deepcopy(STAR_PROP)
-			prop.table_id = table_ids
-		else:
-			prop = copy.deepcopy(propertynps[pid])  # !!!
-		if aggr == 3:
-			prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
-		else:
-			prop.set_aggr(aggr)
-		queried_props.append(prop)
-
 	join_cdts = []
 	for cond in entry_sql['from']['conds']:
 		if isinstance(cond, str):
@@ -1061,6 +1046,42 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		z = propertynps[pid1].z + cmper.z.format(propertynps[pid2].z)
 		fetched_cdt = CDT(c_english, c_chinese, z, prop1, prop2, cmper)
 		join_cdts.append(fetched_cdt)
+
+	tid_to_count = None
+	if len(table_ids) == 1:
+		tid_to_count = table_ids[0]
+	elif len(table_ids) == 2 and len(join_cdts) == 1:
+		assert isinstance(join_cdts[0].left, PROPERTYNP) and isinstance(join_cdts[0].right, PROPERTYNP)
+		if join_cdts[0].left.is_unique and not join_cdts[0].right.is_unique:
+			tid_to_count = join_cdts[0].right.table_id
+		elif join_cdts[0].right.is_unique and not join_cdts[0].left.is_unique:
+			tid_to_count = join_cdts[0].right.table_id
+
+	queried_props = []
+	for item in entry_sql['select'][1]:
+		aggr = item[0]
+		if item[1][0] != 0:
+			return "calculation operator in select!"
+		pid = item[1][1][1]-1
+		aggr_distinct = item[1][1][2]
+		assert item[1][2] is None
+		if pid < 0:
+			prop = copy.deepcopy(STAR_PROP)
+			prop.table_id = table_ids
+			assert aggr_distinct is False
+		else:
+			prop = copy.deepcopy(propertynps[pid])  # !!!
+		if aggr == 3:
+			prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
+			if pid < 0:
+				# if there are single2multiple foreign key relationships between the multiple tables, the
+				if tid_to_count is not None:
+					type_to_count = typenps[tid_to_count]
+					prop.c_english = ' the number of %s ' % type_to_count.c_english
+					prop.c_chinese = '%s的数量' % type_to_count.c_chinese
+		else:
+			prop.set_aggr(aggr)
+		queried_props.append(prop)
 
 	cdts = []
 	cdt_linkers = []
@@ -1178,10 +1199,17 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		if pid1 < 0:
 			chosen_prop = copy.deepcopy(STAR_PROP)
 			chosen_prop.table_id = table_ids
+			assert aggr_distinct is False
 		else:
 			chosen_prop = copy.deepcopy(propertynps[pid1])
 		if aggr == 3:
 			chosen_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
+			if pid1 < 0:
+				# if there are single2multiple foreign key relationships between the multiple tables, the
+				if tid_to_count is not None:
+					type_to_count = typenps[tid_to_count]
+					chosen_prop.c_english = ' the number of %s ' % type_to_count.c_english
+					chosen_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 		else:
 			chosen_prop.set_aggr(aggr)
 		value = cond[3]
@@ -1242,6 +1270,12 @@ def np_from_entry(entry_sql, typenps, propertynps):
 				ob_prop = copy.deepcopy(propertynps[ob_pid])
 			if aggr == 3:
 				ob_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
+				if ob_pid < 0:
+					# if there are single2multiple foreign key relationships between the multiple tables, the
+					if tid_to_count is not None:
+						type_to_count = typenps[tid_to_count]
+						ob_prop.c_english = ' the number of %s ' % type_to_count.c_english
+						ob_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 			else:
 				ob_prop.set_aggr(aggr)
 			orderby_props.append(ob_prop)
@@ -1689,12 +1723,15 @@ class QRYNP:
 
 		# queried_props info
 		tableid_of_last_prop = None
+		need_from_even_single = False
 		# if there are no group-by clauses in this query, write down the ultimate version of queried props directly
 		if self.np.group_props is None or len(self.np.group_props) == 0:
 			for idx, prop in enumerate(self.np.queried_props):
 				# if it is a '*' column
 				if isinstance(prop.table_id, list):
 					sent_1 += prop.c_english
+					if prop.aggr != 3:
+						need_from_even_single = True
 				else:
 					if prop.table_id == tableid_of_last_prop:
 						name = prop.c_english.format('')
@@ -1712,6 +1749,7 @@ class QRYNP:
 				# if it is a '*' column
 				if isinstance(prop.table_id, list):
 					sent_1 += STAR_PROP.c_english
+					need_from_even_single = True
 				else:
 					if prop.table_id == tableid_of_last_prop:
 						name = propertynps[prop.overall_idx].c_english.format('')
@@ -1725,7 +1763,7 @@ class QRYNP:
 					sent_1 += ' and '
 
 		# table info
-		if num_tables > 1:
+		if num_tables > 1 or need_from_even_single:
 			sent_1 += ' from '
 			for idx, table_id in enumerate(self.np.table_ids):
 				sent_1 += typenps[table_id].c_english
@@ -2321,6 +2359,17 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	for tid in table_ids:
 		table_actived[tid] = False
 
+	tid_to_count = None
+	if len(table_ids) == 1:
+		tid_to_count = table_ids[0]
+	elif len(table_ids) == 2 and len(join_cdts) == 1:
+		assert isinstance(join_cdts[0].left, PROPERTYNP) and isinstance(join_cdts[0].right, PROPERTYNP)
+		if join_cdts[0].left.is_unique and not join_cdts[0].right.is_unique:
+			tid_to_count = join_cdts[0].right.table_id
+		elif join_cdts[0].right.is_unique and not join_cdts[0].left.is_unique:
+			tid_to_count = join_cdts[0].right.table_id
+
+
 	if print_verbose:
 		print("tables set~")
 
@@ -2525,6 +2574,12 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			elif rho < 0.4:
 				_star = copy.deepcopy(STAR_PROP)
 				_star.set_aggr(3)
+
+				# if there are single2multiple foreign key relationships between the multiple tables, the
+				if tid_to_count is not None:
+					type_to_count = typenps[tid_to_count]
+					_star.c_english = ' the number of %s ' % type_to_count.c_english
+					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 				having_cdt = construct_cv_where_cdt([], propertynps, True, _star, no_negative=True)
 
 			# if all groups or no groups are excluded after this 'having_cdt', then don't add this 'having_cdt'
@@ -2646,13 +2701,18 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 		if rho < 0.15:
 			props2query.pop()
-			star = copy.deepcopy(STAR_PROP)
-			star.table_id = table_ids
+			_star = copy.deepcopy(STAR_PROP)
+			_star.table_id = table_ids
 			rho = random.random()
 			# for queries with group-by, count aggregator has to be added
 			if rho < 0.9 or groupby_prop_ids is not None:
-				star.set_aggr(3)
-			props2query.append(star)
+				_star.set_aggr(3)
+				# if there are single2multiple foreign key relationships between the multiple tables, the
+				if tid_to_count is not None:
+					type_to_count = typenps[tid_to_count]
+					_star.c_english = ' the number of %s ' % type_to_count.c_english
+					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
+			props2query.append(_star)
 
 	if print_verbose:
 		print("properties to query set")
@@ -2842,6 +2902,11 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				orderby_props.pop()
 				_star = copy.deepcopy(STAR_PROP)
 				_star.set_aggr(3)
+				# if there are single2multiple foreign key relationships between the multiple tables, the
+				if tid_to_count is not None:
+					type_to_count = typenps[tid_to_count]
+					_star.c_english = ' the number of %s ' % type_to_count.c_english
+					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 				orderby_props.append(_star)
 
 		rho = random.random()
@@ -3067,10 +3132,13 @@ def build_spider_dataset(num):
 	crsr = conn.cursor()
 
 	typenps = []
+	print("")
+	print("All table names: ")
 	for idx, tab_name in enumerate(meta['table_names']):
 		c_english = '@' + tab_name + '@'
 		c_chinese = '@' + tab_name + '@'
 		z = meta['table_names_original'][idx]
+		print(z)
 		if ' ' in z:
 			z = '[' + z + ']'
 		properties = []
@@ -3084,6 +3152,7 @@ def build_spider_dataset(num):
 	for idx, prop_name in enumerate(meta['column_names']):
 		table_idx = prop_name[0]
 		if table_idx < 0:
+			assert idx == 0
 			# print('star: ', idx, prop_name)
 			continue
 		c_english = '{0}$' + prop_name[1] + '$'
@@ -3096,6 +3165,9 @@ def build_spider_dataset(num):
 		dtype = meta['column_types'][idx]
 		cur_prop = PROPERTYNP(c_english=c_english, c_chinese=c_chinese, z=z, dtype=dtype, table_id=table_idx,
 					   overall_idx=idx - 1, meta_idx=idx - 1)
+		if idx in meta['primary_keys']:
+			cur_prop.is_primary = True
+		'''
 		query_all = 'select %s from %s' % (cur_prop.z.format(''), typenps[cur_prop.table_id].z)
 		try:
 			all_values = crsr.execute(query_all).fetchall()
@@ -3114,11 +3186,12 @@ def build_spider_dataset(num):
 			cur_prop.is_unique = True
 		else:
 			cur_prop.is_unique = False
+		'''
 		propertynps.append(cur_prop)
 
 	fks = meta['foreign_keys']  # a.k.a the prop_rels
-	'''
-	typenp_unique_fk_num = [0]*len(typenps)
+
+	typenp_unique_fk_num = [[] for _ in range(len(typenps))]
 
 	for pair in fks:
 		assert pair[0]-1 >= 0 and pair[1]-1 >= 0
@@ -3126,15 +3199,18 @@ def build_spider_dataset(num):
 		prop2 = propertynps[pair[1]-1]
 		tid1 = prop1.table_id
 		tid2 = prop2.table_id
-		if prop1.is_unique:
-			typenp_unique_fk_num[tid2] += 1
-		if prop2.is_unique:
-			typenp_unique_fk_num[tid1] += 1
-
+		# if the other side of this foreign key relation is a primary key, it means the column in this side of this
+		# foreign key relation is a reference, namely an edge column, two edge columns make up an edge table
+		if prop1.is_primary and (pair[1]-1) not in typenp_unique_fk_num[tid2]:
+			typenp_unique_fk_num[tid2].append(pair[1]-1)
+		if prop2.is_primary and (pair[0]-1) not in typenp_unique_fk_num[tid1]:
+			typenp_unique_fk_num[tid1].append(pair[0]-1)
+	print("")
 	for tid, item in enumerate(typenp_unique_fk_num):
-		if item == 2:
+		if len(item) == 2:
 			typenps[tid].is_edge = True
-	'''
+			print("edge table: %s" % typenps[tid].c_english)
+	print("")
 	for pair in fks:
 		if meta['column_names'][pair[0]][0] == meta['column_names'][pair[1]][0]:
 			new_typenp = copy.deepcopy(typenps[meta['column_names'][pair[0]][0]])
@@ -3876,6 +3952,12 @@ def convert(file_path):
 	print("convertion finished!")
 
 
+def test_edge():
+	for num in range(166):
+		database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, \
+		valid_database, conn, crsr, num_queries = build_spider_dataset(num)
+
+
 if __name__ == '__main__':
 	begin = time.time()
 	idx = args.db_id
@@ -3887,6 +3969,8 @@ if __name__ == '__main__':
 		hit(idx, 10000, False)
 	elif args.mode == 'convert':
 		convert('./spider/spider/train_spider.json')
+	elif args.mode == 'test_edge':
+		test_edge()
 	else:
 		print("Assigned mode does not match with any programs!")
 		raise AssertionError
