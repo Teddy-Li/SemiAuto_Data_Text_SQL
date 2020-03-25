@@ -415,7 +415,7 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 		chosen_prop = assigned_prop
 
 	# if there are single2multiple foreign key relationships between the multiple tables, the
-	if chosen_prop.type == 'star' and chosen_prop.aggr == 3 and type_to_count is not None:
+	if chosen_prop.dtype == 'star' and chosen_prop.aggr == 3 and type_to_count is not None:
 		assert isinstance(type_to_count, TYPENP)
 		chosen_prop.c_english = ' the number of %s ' % type_to_count.c_english
 		chosen_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
@@ -540,7 +540,7 @@ def construct_cc_where_cdt(available_prop_ids, propertynps, prop_mat, use_aggr_f
 
 
 # sub-queries can be either around properties with foreign key relations or same names, but rarely anything else
-def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat, prop_rels,
+def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels,
 						   use_aggr_for_left_prop=False, cursor=None, no_negative=False, verbose=False):
 	# only allow those with actual values
 	all_prop_ids = []
@@ -577,7 +577,7 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 	prop4right_subq = copy.deepcopy(propertynps[right_prop_id])
 	prop4right_subq.set_aggr(use_aggr)
 
-	right_subq_np, right_subq_qrynp = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels,
+	right_subq_np, right_subq_qrynp = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels,
 													is_recursive=True,
 													specific_props=[prop4right_subq], cursor=cursor,
 													require_singlereturn=(cmper.index != 8), print_verbose=verbose)
@@ -902,6 +902,9 @@ class PROPERTYNP(BASENP):
 	#	valid:			bool		# Whether there are actual values in this column
 	#	clones:			list		# Contains the overall_idx of the properties which are clones of this property from
 	#								# same-table fk relations
+	#	distinct		bool		# whether it is to be paired with 'distinct count'
+	#	is_fk_left		bool		# whether it appears in the left side of a foreign key relation (left means a reference)
+	#	is_fk_right		bool		# whether it appears in the right side of a foreign key relation (right means basis)
 	def __init__(self, c_english, c_chinese, z, dtype, table_id=None, overall_idx=None, values=None,
 				 aggr=0, from_sum=False, from_cnt=False, is_unique=False, meta_idx=None):
 		BASENP.__init__(self, c_english, c_chinese, z)
@@ -920,6 +923,8 @@ class PROPERTYNP(BASENP):
 		self.valid = True
 		self.clones = []
 		self.distinct = False  # for aggregator 'COUNT', means whether it is 'count' or 'distinct count'
+		self.is_fk_left = False
+		self.is_fk_right = False
 
 	def set_values(self, values):
 		assert (values is not None)
@@ -1011,7 +1016,7 @@ class CDT(BASENP):
 
 # convert a query in json format into a NP type object
 # pid needs to +1 because 0 is occupied by * in SPIDER format
-def np_from_entry(entry_sql, typenps, propertynps):
+def np_from_entry(entry_sql, typenps, propertynps, fk_rels):
 	table_ids = []
 	for item in entry_sql['from']['table_units']:
 		if item[0] == 'sql':
@@ -1047,15 +1052,58 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		fetched_cdt = CDT(c_english, c_chinese, z, prop1, prop2, cmper)
 		join_cdts.append(fetched_cdt)
 
-	tid_to_count = None
+	tids_is_left = {item: False for item in table_ids}
+	tids_is_right = {item: False for item in table_ids}
+	for item in join_cdts:
+		if item.left.is_fk_left and item.right.is_fk_right:
+			tids_is_left[item.left.table_id] = True
+			tids_is_right[item.right.table_id] = True
+		elif item.left.is_fk_right and item.right.is_fk_left:
+			tids_is_left[item.right.table_id] = True
+			tids_is_right[item.left.table_id] = True
+	main_tid = None
+	join_simplifiable = True
+	if len(table_ids) > 1:
+		for tid in table_ids:
+			if tids_is_left[tid] is True and tids_is_right[tid] is False:
+				assert main_tid is None
+				main_tid = tid
+			# for cases where it's about two instances of the same table
+			elif len(tids_is_left) == 1 and len(tids_is_right) == 1:
+				main_tid = tid
+				join_simplifiable = False
+			# if medium tables exist or multiple instances of same table exist, join conditions cannot be simplified
+			# because it'll lose the dependency hierarchy
+			elif tids_is_left[tid] is True and tids_is_right[tid] is True:
+				join_simplifiable = False
+	else:
+		main_tid = table_ids[0]
+
+	if join_simplifiable and main_tid is not None:
+		for item in join_cdts:
+			tid1 = item.left.table_id
+			tid2 = item.right.table_id
+			join_cdts_cnt = 0
+			for rel in fk_rels:
+				if rel.table_ids[0] == tid1 and rel.table_ids[1] == tid2:
+					join_cdts_cnt += 1
+				elif rel.table_ids[0] == tid2 and rel.table_ids[1] == tid1:
+					join_cdts_cnt += 1
+			# if there are multiple foreign key relationships between table pairs in this query, then by simplifying
+			# canonical utterance of join conditions ambiguity would occur
+			if join_cdts_cnt > 1:
+				join_simplifiable = False
+
+	'''
 	if len(table_ids) == 1:
-		tid_to_count = table_ids[0]
+		main_tid = table_ids[0]
 	elif len(table_ids) == 2 and len(join_cdts) == 1:
 		assert isinstance(join_cdts[0].left, PROPERTYNP) and isinstance(join_cdts[0].right, PROPERTYNP)
 		if join_cdts[0].left.is_unique and not join_cdts[0].right.is_unique:
-			tid_to_count = join_cdts[0].right.table_id
+			main_tid = join_cdts[0].right.table_id
 		elif join_cdts[0].right.is_unique and not join_cdts[0].left.is_unique:
-			tid_to_count = join_cdts[0].right.table_id
+			main_tid = join_cdts[0].right.table_id
+	'''
 
 	queried_props = []
 	for item in entry_sql['select'][1]:
@@ -1075,8 +1123,8 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
 			if pid < 0:
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if tid_to_count is not None:
-					type_to_count = typenps[tid_to_count]
+				if main_tid is not None:
+					type_to_count = typenps[main_tid]
 					prop.c_english = ' the number of %s ' % type_to_count.c_english
 					prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 		else:
@@ -1127,7 +1175,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			if cond[4] is not None:
 				return "between operator with sub-query and value!"
 			try:
-				pack = np_from_entry(value, typenps, propertynps)
+				pack = np_from_entry(value, typenps, propertynps, fk_rels)
 			except KeyError as e:
 				raise
 			if isinstance(pack, str):
@@ -1177,7 +1225,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		gb_prop = copy.deepcopy(propertynps[gb_pid])
 		group_props.append(gb_prop)
 
-	having_cdt = []
+	having_cdts = []
 	if len(entry_sql['having']) > 1:
 		return "more than one having condition!"
 	for cond in entry_sql['having']:
@@ -1206,8 +1254,8 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			chosen_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
 			if pid1 < 0:
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if tid_to_count is not None:
-					type_to_count = typenps[tid_to_count]
+				if main_tid is not None:
+					type_to_count = typenps[main_tid]
 					chosen_prop.c_english = ' the number of %s ' % type_to_count.c_english
 					chosen_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 		else:
@@ -1218,7 +1266,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 		if isinstance(value, dict):
 			assert cond[4] is None
 			try:
-				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps)
+				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps, fk_rels)
 			except KeyError as e:
 				raise
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
@@ -1226,7 +1274,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
 			z = chosen_prop.z + cmper.z.format(' ( ' + qrynp_2.z + ' ) ')
 			cdt = CDT(c_english, c_chinese, z, chosen_prop, qrynp_2, cmper)
-			having_cdt.append(cdt)
+			having_cdts.append(cdt)
 		else:
 			try:
 				value_str = str(value)
@@ -1251,7 +1299,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_str)
 			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
 			cdt = CDT(c_english, c_chinese, z, chosen_prop, value, cmper)
-			having_cdt.append(cdt)
+			having_cdts.append(cdt)
 
 	orderby_props = []
 	orderby_order = None
@@ -1272,8 +1320,8 @@ def np_from_entry(entry_sql, typenps, propertynps):
 				ob_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
 				if ob_pid < 0:
 					# if there are single2multiple foreign key relationships between the multiple tables, the
-					if tid_to_count is not None:
-						type_to_count = typenps[tid_to_count]
+					if main_tid is not None:
+						type_to_count = typenps[main_tid]
 						ob_prop.c_english = ' the number of %s ' % type_to_count.c_english
 						ob_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 			else:
@@ -1292,7 +1340,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 	if entry_sql['intersect'] is not None:
 		assert entry_sql['union'] is None and entry_sql['except'] is None
 		try:
-			pack = np_from_entry(entry_sql['intersect'], typenps, propertynps)
+			pack = np_from_entry(entry_sql['intersect'], typenps, propertynps, fk_rels)
 			has_intersect = True
 		except KeyError as e:
 			raise
@@ -1304,7 +1352,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 	if entry_sql['union'] is not None:
 		assert entry_sql['intersect'] is None and entry_sql['except'] is None
 		try:
-			pack = np_from_entry(entry_sql['union'], typenps, propertynps)
+			pack = np_from_entry(entry_sql['union'], typenps, propertynps, fk_rels)
 			has_union = True
 		except KeyError as e:
 			raise
@@ -1316,7 +1364,7 @@ def np_from_entry(entry_sql, typenps, propertynps):
 	if entry_sql['except'] is not None:
 		assert entry_sql['union'] is None and entry_sql['intersect'] is None
 		try:
-			pack = np_from_entry(entry_sql['except'], typenps, propertynps)
+			pack = np_from_entry(entry_sql['except'], typenps, propertynps, fk_rels)
 			has_except = True
 		except KeyError as e:
 			raise
@@ -1327,10 +1375,12 @@ def np_from_entry(entry_sql, typenps, propertynps):
 
 	distinct = entry_sql['select'][0]
 
+	if not join_simplifiable:
+		main_tid = None
 	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
-				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdt=having_cdt, orderby_props=orderby_props,
+				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
-				  has_except=has_except, has_intersect=has_intersect, distinct=distinct)
+				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tid=main_tid)
 	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=True)
 	return final_np, final_qrynp
 
@@ -1346,20 +1396,21 @@ class NP:
 	#	cdts:			list(CDT)
 	#	cdt_linkers:	string
 	#	group_props:	PROPERTYNP
-	#	having_cdt:		list(CDT)
+	#	having_cdts:		list(CDT)
 	#	orderby_props:	PROPERTYNP
 	#	orderby_order:	string
 	#	limit:			int
 	#	np_2:			NP
 	#	qrynp_2:		QRYNP
 	#	has_union:		bool
-	#	has_except		bool
-	#	has_intersect	bool
+	#	has_except:		bool
+	#	has_intersect:	bool
 	#	distinct:		bool
+	#	main_tid:		int
 	def __init__(self, prev_np=None, queried_props=None, table_ids=None, join_cdts=None,
-				 cdts=None, cdt_linkers=None, group_props=None, having_cdt=None,
+				 cdts=None, cdt_linkers=None, group_props=None, having_cdts=None,
 				 orderby_props=None, orderby_order=None, limit=None, np_2=None, qrynp_2=None, has_union=None,
-				 has_except=None, has_intersect=None, distinct=False):
+				 has_except=None, has_intersect=None, distinct=False, main_tid=None):
 		if prev_np is not None:
 			self.queried_props = copy.deepcopy(prev_np.queried_props)
 			self.table_ids = copy.deepcopy(prev_np.table_ids)
@@ -1367,7 +1418,7 @@ class NP:
 			self.cdts = copy.deepcopy(prev_np.cdts)
 			self.cdt_linkers = copy.deepcopy(cdt_linkers)
 			self.group_props = copy.deepcopy(prev_np.group_props)
-			self.having_cdt = copy.deepcopy(prev_np.having_cdt)
+			self.having_cdts = copy.deepcopy(prev_np.having_cdts)
 			self.orderby_props = copy.deepcopy(prev_np.orderby_props)
 			self.orderby_order = copy.deepcopy(prev_np.orderby_order)
 			self.limit = copy.deepcopy(prev_np.limit)
@@ -1377,6 +1428,7 @@ class NP:
 			self.has_except = prev_np.has_except
 			self.has_intersect = prev_np.has_intersect
 			self.distinct = prev_np.distinct
+			self.main_tid = prev_np.main_tid
 		else:
 			self.queried_props = None
 			self.table_ids = None
@@ -1384,7 +1436,7 @@ class NP:
 			self.cdts = []
 			self.cdt_linkers = []
 			self.group_props = None
-			self.having_cdt = None
+			self.having_cdts = None
 			self.orderby_props = None
 			self.orderby_order = None
 			self.limit = None
@@ -1394,6 +1446,7 @@ class NP:
 			self.has_except = None
 			self.has_intersect = None
 			self.distinct = distinct
+			self.main_tid = main_tid
 		if queried_props is not None:
 			for prop in queried_props:
 				assert (isinstance(prop, PROPERTYNP))
@@ -1408,13 +1461,13 @@ class NP:
 				assert (isinstance(cdt, CDT))
 			self.cdts = copy.deepcopy(cdts)
 			self.cdt_linkers = copy.deepcopy(cdt_linkers)
-		if len(cdt_linkers) > 0:
+		if cdt_linkers is not None and len(cdt_linkers) > 0:
 			assert (cdts is not None)
 			assert (len(cdt_linkers) + 1 == len(cdts))
 		if group_props is not None:
 			self.group_props = copy.deepcopy(group_props)
-		if having_cdt is not None:
-			self.having_cdt = copy.deepcopy(having_cdt)
+		if having_cdts is not None:
+			self.having_cdts = copy.deepcopy(having_cdts)
 		if orderby_props is not None:
 			self.orderby_props = copy.deepcopy(orderby_props)
 			assert (orderby_order is not None)
@@ -1533,13 +1586,13 @@ class QRYNP:
 				z_toks += (' ' + ', '.join(groupby_propnames) + ' ').split()
 
 		# having conditions
-		if self.np.having_cdt is not None and len(self.np.having_cdt) > 0:
+		if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
 			z += ' having '
 			z_toks.append('having')
-			for hv_idx, item in enumerate(self.np.having_cdt):
+			for hv_idx, item in enumerate(self.np.having_cdts):
 				z += item.fetch_z(temp_tabname_bucket)
 				z_toks += item.fetch_z(temp_tabname_bucket).split(' ')
-				if hv_idx < len(self.np.having_cdt)-1:
+				if hv_idx < len(self.np.having_cdts)-1:
 					z += ', '
 
 		if self.np.orderby_props is not None:
@@ -1621,11 +1674,11 @@ class QRYNP:
 			elif idx + 2 == len(self.np.group_props):
 				c_english += ' and '
 
-		if self.np.having_cdt is not None:
+		if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
 			c_english += ' having '
-			for hv_idx, item in enumerate(self.np.having_cdt):
+			for hv_idx, item in enumerate(self.np.having_cdts):
 				c_english += item.c_english
-				if hv_idx < len(self.np.having_cdt)-1:
+				if hv_idx < len(self.np.having_cdts)-1:
 					c_english += ' , '
 		if self.np.group_props is not None:
 			if len(self.np.group_props) > 0:
@@ -1853,9 +1906,9 @@ class QRYNP:
 						groupby_sent += ', '
 					elif idx + 2 == len(self.np.group_props):
 						groupby_sent += ' and '
-				if self.np.having_cdt is not None:
+				if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
 					groupby_sent += ' where '
-					for item in self.np.having_cdt:
+					for item in self.np.having_cdts:
 						groupby_sent += (item.c_english + ' , ')
 				else:
 					groupby_sent += ' , '
@@ -1980,11 +2033,11 @@ class QRYNP:
 		else:
 			self.np.group_props = []
 
-		if self.np.having_cdt is not None:
+		if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
 			c_chinese += '满足'
-			for hv_idx, item in enumerate(self.np.having_cdt):
+			for hv_idx, item in enumerate(self.np.having_cdts):
 				c_chinese += item.c_chinese
-				if hv_idx < len(self.np.having_cdt)-1:
+				if hv_idx < len(self.np.having_cdts)-1:
 					c_chinese += '、'
 			c_chinese += '的'
 
@@ -2168,11 +2221,11 @@ class QRYNP:
 			if len(self.np.group_props) > 0:
 				groupby_sent = 'Result {0[%d]}：从{0[%d]}中，在每个' % (
 					len(c_chinese), len(c_chinese) - 1)
-				if self.np.having_cdt is not None:
+				if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
 					groupby_sent += '满足'
-					for hv_idx, item in enumerate(self.np.having_cdt):
+					for hv_idx, item in enumerate(self.np.having_cdts):
 						groupby_sent += item.c_chinese
-						if hv_idx < len(self.np.having_cdt)-1:
+						if hv_idx < len(self.np.having_cdts)-1:
 							groupby_sent += '、'
 					groupby_sent += '的、'
 				for idx, prop in enumerate(self.np.group_props):
@@ -2282,7 +2335,7 @@ AGGR_SUBQDIST = transform2distribution_proportional(
 
 # type_mat的连接是单向的；prop_mat的连接是双向的，且矩阵是对称的；这里的property不包括*
 # is_recursive is False & specific_props is not None	->		是一个union / except / intersect 子语句
-def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recursive=False, specific_props=None,
+def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, is_recursive=False, specific_props=None,
 				  print_verbose=False, finalize_sequence=False, cursor=None, require_singlereturn=False):
 	res_is_single = False  # initialize result status as not single
 	# set random seeds
@@ -2359,16 +2412,47 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	for tid in table_ids:
 		table_actived[tid] = False
 
-	tid_to_count = None
-	if len(table_ids) == 1:
-		tid_to_count = table_ids[0]
-	elif len(table_ids) == 2 and len(join_cdts) == 1:
-		assert isinstance(join_cdts[0].left, PROPERTYNP) and isinstance(join_cdts[0].right, PROPERTYNP)
-		if join_cdts[0].left.is_unique and not join_cdts[0].right.is_unique:
-			tid_to_count = join_cdts[0].right.table_id
-		elif join_cdts[0].right.is_unique and not join_cdts[0].left.is_unique:
-			tid_to_count = join_cdts[0].right.table_id
+	tids_is_left = {item: False for item in table_ids}
+	tids_is_right = {item: False for item in table_ids}
+	for item in join_cdts:
+		if item.left.is_fk_left and item.right.is_fk_right:
+			tids_is_left[item.left.table_id] = True
+			tids_is_right[item.right.table_id] = True
+		elif item.left.is_fk_right and item.right.is_fk_left:
+			tids_is_left[item.right.table_id] = True
+			tids_is_right[item.left.table_id] = True
+	main_tid = None
+	join_simplifiable = True
+	if len(table_ids) > 1:
+		for tid in table_ids:
+			if tids_is_left[tid] is True and tids_is_right[tid] is False:
+				assert main_tid is None
+				main_tid = tid
+			# for cases where it's about two instances of the same table
+			elif len(tids_is_left) == 1 and len(tids_is_right) == 1:
+				main_tid = tid
+				join_simplifiable = False
+			# if medium tables exist or multiple instances of same table exist, join conditions cannot be simplified
+			# because it'll lose the dependency hierarchy
+			elif tids_is_left[tid] is True and tids_is_right[tid] is True:
+				join_simplifiable = False
+	else:
+		main_tid = table_ids[0]
 
+	if join_simplifiable and main_tid is not None:
+		for item in join_cdts:
+			tid1 = item.left.table_id
+			tid2 = item.right.table_id
+			join_cdts_cnt = 0
+			for rel in fk_rels:
+				if rel.table_ids[0] == tid1 and rel.table_ids[1] == tid2:
+					join_cdts_cnt += 1
+				elif rel.table_ids[0] == tid2 and rel.table_ids[1] == tid1:
+					join_cdts_cnt += 1
+			# if there are multiple foreign key relationships between table pairs in this query, then by simplifying
+			# canonical utterance of join conditions ambiguity would occur
+			if join_cdts_cnt > 1:
+				join_simplifiable = False
 
 	if print_verbose:
 		print("tables set~")
@@ -2409,7 +2493,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		# if already is a recursed function instance, don't dive deeper again
 		if rho < 0.2 and is_recursive is False and not ci_occured_flag:
 			current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													   prop_rels, cursor=cursor, verbose=print_verbose)
+													   prop_rels, fk_rels, cursor=cursor, verbose=print_verbose)
 			if current_where_cdt is not None:
 				ci_occured_flag = True
 				cur_is_ci_flag = True
@@ -2482,7 +2566,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	available_prop_ids_after_where = copy.copy(available_prop_ids)
 
 	# about group-by and having
-	having_cdt = None
+	having_cdts = []
 	rho = random.random()
 	# these probabilities come from SPIDER dataset train set statistics
 	if rho < 0.08:
@@ -2532,7 +2616,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			_prop.set_aggr(3)
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props + [copy.deepcopy(propertynps[idx])], having_cdt=None)
+						group_props=groupby_props + [copy.deepcopy(propertynps[idx])], having_cdts=None)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			all_one = True
@@ -2566,23 +2650,23 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				if idx not in groupby_prop_ids:
 					having_usable_prop_ids.append(idx)
 			if rho < 0.03:
-				having_cdt = construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													prop_rels, True, cursor=cursor, no_negative=True,
-													verbose=print_verbose)
+				having_cdts.append(construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat, prop_mat,
+													prop_rels, fk_rels, True, cursor=cursor, no_negative=True,
+													verbose=print_verbose))
 			elif rho < 0.15:
-				having_cdt = construct_cv_where_cdt(having_usable_prop_ids, propertynps, True, no_negative=True)
+				having_cdts.append(construct_cv_where_cdt(having_usable_prop_ids, propertynps, True, no_negative=True))
 			elif rho < 0.4:
 				_star = copy.deepcopy(STAR_PROP)
 				_star.set_aggr(3)
 
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if tid_to_count is not None:
-					type_to_count = typenps[tid_to_count]
+				if main_tid is not None:
+					type_to_count = typenps[main_tid]
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
-				having_cdt = construct_cv_where_cdt([], propertynps, True, _star, no_negative=True)
+				having_cdts.append(construct_cv_where_cdt([], propertynps, True, _star, no_negative=True))
 
-			# if all groups or no groups are excluded after this 'having_cdt', then don't add this 'having_cdt'
+			# if all groups or no groups are excluded after this 'having_cdts', then don't add this 'having_cdts'
 			_prop = copy.deepcopy(STAR_PROP)
 			_prop.set_aggr(3)
 			prev_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
@@ -2592,18 +2676,19 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			prev_res = cursor.execute(prev_qrynp.z).fetchall()
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props, having_cdt=[having_cdt])
+						group_props=groupby_props, having_cdts=having_cdts)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			if len(res) == 0 or len(res) == len(prev_res):
 				if len(res) == len(prev_res):
 					pass
 				else:
-					having_cdt = None
+					having_cdts = []
 
 			# set corresponding table_activated to True
-			if having_cdt is not None:
-				table_actived[having_cdt.left.table_id] = True
+			if having_cdts is not None and len(having_cdts) > 0:
+				assert len(having_cdts) == 1
+				table_actived[having_cdts[0].left.table_id] = True
 	else:
 		groupby_prop_ids = None
 		groupby_props = []
@@ -2634,7 +2719,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 					groupby_prop_ids = None
 					groupby_props = []
 					available_after_group_by_prop_ids = None
-					having_cdt = None
+					having_cdts = None
 			props2query.append(prop)
 	elif rho < 0.05:
 		props2query = [copy.deepcopy(STAR_PROP)]
@@ -2688,7 +2773,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(chosen_prop)], table_ids=table_ids,
 							join_cdts=join_cdts,
 							cdts=where_cdts, cdt_linkers=where_linkers,
-							group_props=groupby_props, having_cdt=[having_cdt],
+							group_props=groupby_props, having_cdts=having_cdts,
 							orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 							orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
@@ -2708,8 +2793,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 			if rho < 0.9 or groupby_prop_ids is not None:
 				_star.set_aggr(3)
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if tid_to_count is not None:
-					type_to_count = typenps[tid_to_count]
+				if main_tid is not None:
+					type_to_count = typenps[main_tid]
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 			props2query.append(_star)
@@ -2738,7 +2823,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# we don't order-by when there is only one entry returned
 	cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers,
-				group_props=groupby_props, having_cdt=[having_cdt],
+				group_props=groupby_props, having_cdts=having_cdts,
 				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
@@ -2764,10 +2849,11 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	need_orderby_covered = False
 	# if groupBy is not used by 'having', and xxx is covered by groupBy columns, then use an grouped-columns related
 	# orderBy to use it
-	if having_cdt is None and num_groupbys > 0 and props2query_covered_by_groupbyids:
-		if is_recursive is True or specific_props is None:
-			num_orderbys = max(1, num_orderbys)
-			need_orderby_covered = True
+	if having_cdts is None or len(having_cdts) == 0:
+		if num_groupbys > 0 and props2query_covered_by_groupbyids:
+			if is_recursive is True or specific_props is None:
+				num_orderbys = max(1, num_orderbys)
+				need_orderby_covered = True
 
 	orderby_available_props = []
 
@@ -2802,7 +2888,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	# if all returned entries are the same, don't order by this column
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-				having_cdt=[having_cdt], orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
+				having_cdts=having_cdts, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	res = cursor.execute(cur_qrynp.z).fetchall()
@@ -2903,8 +2989,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 				_star = copy.deepcopy(STAR_PROP)
 				_star.set_aggr(3)
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if tid_to_count is not None:
-					type_to_count = typenps[tid_to_count]
+				if main_tid is not None:
+					type_to_count = typenps[main_tid]
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 				orderby_props.append(_star)
@@ -2932,7 +3018,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 
 			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-						having_cdt=[having_cdt])
+						having_cdts=having_cdts)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			len_res_prime = max(len(res), 1)
@@ -2960,16 +3046,16 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		# if no aggregators exist in queried properties
 		if flag:
 			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
+						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 						orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
 			rho = random.random()
 			if rho < 0.1:
 				# here because the assigned properties might not be compatible with group-by clauses or such, it might not
 				# run, if it doesn't run, just discard it
-				np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recursive=False,
+				np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, is_recursive=False,
 											  specific_props=props2query, cursor=cursor, print_verbose=print_verbose)
 			else:
-				np_2, qrynp_2 = modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, cur_np,
+				np_2, qrynp_2 = modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, cur_np,
 											 available_prop_ids_after_where, cursor, print_verbose)
 			# choose between using the second query as an 'union' or an 'except'
 			rho = random.random()
@@ -2983,7 +3069,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	if np_2 is not None:
 		assert qrynp_2 is not None
 		cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
+					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 		res_1 = cursor.execute(cur_qrynp.z).fetchall()
@@ -2999,7 +3085,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		print("post-subquery set~")
 
 	inspect_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
+					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 					has_union=has_union, has_except=has_except, has_intersect=has_intersect)
 	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
@@ -3015,10 +3101,14 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 		distinct = True
 	else:
 		distinct = False
+
+	if not join_simplifiable:
+		main_tid = None
 	final_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
-				  cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdt=[having_cdt],
+				  cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 				  orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
-				  has_union=has_union, has_except=has_except, has_intersect=has_intersect, distinct=distinct)
+				  has_union=has_union, has_except=has_except, has_intersect=has_intersect, distinct=distinct,
+				  main_tid=main_tid)
 	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	if print_verbose:
 		print("ALL SET!")
@@ -3026,7 +3116,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, is_recurs
 	return final_np, final_qrynp
 
 
-def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, available_prop_ids, cursor,
+def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, last_np, available_prop_ids, cursor,
 				 print_verbose):
 	rho = random.random()
 	final_np = None
@@ -3040,7 +3130,7 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, a
 			# if already is a recursed function instance, don't dive deeper again
 			if rho < 0.01:
 				current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
-														   prop_rels, cursor=cursor, verbose=print_verbose)
+														   prop_rels, fk_rels, cursor=cursor, verbose=print_verbose)
 			else:
 				rho = random.random()
 				if rho < 0.7:
@@ -3078,7 +3168,7 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, last_np, a
 			# if already is a recursed function instance, don't dive deeper again
 			if rho < 0.01:
 				current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
-														   prop_rels, cursor=cursor, verbose=print_verbose)
+														   prop_rels, fk_rels, cursor=cursor, verbose=print_verbose)
 			else:
 				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
 			# there is guaranteed to have a c-v condition
@@ -3191,10 +3281,13 @@ def build_spider_dataset(num):
 
 	fks = meta['foreign_keys']  # a.k.a the prop_rels
 
-	typenp_unique_fk_num = [[] for _ in range(len(typenps))]
+	#typenp_unique_fk_num = [[] for _ in range(len(typenps))]
 
 	for pair in fks:
 		assert pair[0]-1 >= 0 and pair[1]-1 >= 0
+		propertynps[pair[0]-1].is_fk_left = True
+		propertynps[pair[1]-1].is_fk_right = True
+		'''
 		prop1 = propertynps[pair[0]-1]
 		prop2 = propertynps[pair[1]-1]
 		tid1 = prop1.table_id
@@ -3205,12 +3298,12 @@ def build_spider_dataset(num):
 			typenp_unique_fk_num[tid2].append(pair[1]-1)
 		if prop2.is_primary and (pair[0]-1) not in typenp_unique_fk_num[tid1]:
 			typenp_unique_fk_num[tid1].append(pair[0]-1)
-	print("")
-	for tid, item in enumerate(typenp_unique_fk_num):
-		if len(item) == 2:
-			typenps[tid].is_edge = True
-			print("edge table: %s" % typenps[tid].c_english)
-	print("")
+		'''
+	#for tid, item in enumerate(typenp_unique_fk_num):
+	#	if len(item) == 2:
+	#		typenps[tid].is_edge = True
+	#		print("edge table: %s" % typenps[tid].c_english)
+	#print("")
 	for pair in fks:
 		if meta['column_names'][pair[0]][0] == meta['column_names'][pair[1]][0]:
 			new_typenp = copy.deepcopy(typenps[meta['column_names'][pair[0]][0]])
@@ -3381,7 +3474,7 @@ def build_spider_dataset(num):
 
 	num_queries = calc_num_queries_via_stats(len(fk_prop_rels))
 	return database_name, meta[
-		'db_id'], typenps, propertynps, type_matrix, property_matrix, prop_rels, valid, conn, crsr, num_queries
+		'db_id'], typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_prop_rels, valid, conn, crsr, num_queries
 
 
 def format_sql_spider(np):
@@ -3423,9 +3516,9 @@ def format_sql_spider(np):
 		res['groupBy'].append([0, item.meta_idx + 1, False])
 
 	res['having'] = []
-	if np.having_cdt is not None:
+	if np.having_cdts is not None and len(np.having_cdts) > 0:
 
-		for hv_idx, item in enumerate(np.having_cdt):
+		for hv_idx, item in enumerate(np.having_cdts):
 			assert item.cmper.negative is False
 			hvg = [False, item.cmper.index, [0, [int(item.left.aggr), item.left.meta_idx + 1,
 														  item.left.distinct], None]]
@@ -3555,7 +3648,7 @@ def format_query_to_spider(np, qrynp, database_name, sample, headers):
 
 
 def generate_queries(database_idx, verbose):
-	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, valid_database, conn, crsr, num_queries = build_spider_dataset(
+	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, valid_database, conn, crsr, num_queries = build_spider_dataset(
 		database_idx)
 	if not valid_database:
 		return [], [], [], [], [], []
@@ -3582,7 +3675,7 @@ def generate_queries(database_idx, verbose):
 		if query_idx % 10 == 0:
 			print(query_idx)
 		should_dump = False
-		np, qrynp = scratch_build(typenps, propertynps, type_matrix, property_matrix, prop_rels, finalize_sequence=True,
+		np, qrynp = scratch_build(typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, finalize_sequence=True,
 								  cursor=crsr, print_verbose=verbose)
 		try:
 			qry_returned = crsr.execute(qrynp.z).fetchall()
@@ -3766,12 +3859,12 @@ def main(idx, verbose):
 
 
 def debug(verbose):
-	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(
+	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, fk_rels, valid, conn, crsr, num_queries = build_spider_dataset(
 		1)
 	assert valid
 	fp = open('./result_0131.jsonl', 'w')
 	for i in range(ITR_TRY):
-		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, finalize_sequence=True, cursor=crsr,
+		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, fk_rels, finalize_sequence=True, cursor=crsr,
 								  print_verbose=verbose)
 
 		print('SQL: ', qrynp.z)
@@ -3794,7 +3887,7 @@ def debug(verbose):
 
 
 def hit(db_idx, max_iter, verbose):
-	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, valid, conn, crsr, num_queries = build_spider_dataset(
+	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, fk_rels, valid, conn, crsr, num_queries = build_spider_dataset(
 		db_idx)
 	assert valid
 
@@ -3813,7 +3906,7 @@ def hit(db_idx, max_iter, verbose):
 	turns_since_last_hit = 0
 
 	for i in range(max_iter):
-		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, finalize_sequence=True, cursor=crsr,
+		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, fk_rels, finalize_sequence=True, cursor=crsr,
 								  print_verbose=verbose)
 		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=[], headers=[])
 		has_hit = False
@@ -3851,8 +3944,8 @@ def convert(file_path):
 		meta_data = json.load(fp)
 
 	last_dbid = None
-	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, valid_database, \
-	conn, crsr, num_queries = None, None, None, None, None, None, None, None, None, None, None
+	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, valid_database, \
+	conn, crsr, num_queries = None, None, None, None, None, None, None, None, None, None, None, None
 
 	with open(file_path, 'r') as fp:
 		sql_dcts = json.load(fp)
@@ -3902,13 +3995,13 @@ def convert(file_path):
 					db_num = db_idx
 					break
 			assert db_num is not None
-			database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, \
+			database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, \
 			valid_database, conn, crsr, num_queries = build_spider_dataset(db_num)
 		entry_sql = dct['sql']
 		#pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
 
 		try:
-			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
+			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels)
 		except KeyError as e:
 			print("False gold SQL: %d" % dct_idx)
 			print(dct['query'])
@@ -3954,7 +4047,9 @@ def convert(file_path):
 
 def test_edge():
 	for num in range(166):
-		database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, \
+		if num in db_ids_to_ignore:
+			continue
+		database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, \
 		valid_database, conn, crsr, num_queries = build_spider_dataset(num)
 
 
