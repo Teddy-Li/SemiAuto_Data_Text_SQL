@@ -444,10 +444,7 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 	if cmper.index == 2 and chosen_prop.dtype in ['int', 'double']:
 		cmper.c_english = ' is equal to {0}'
 		cmper.c_chinese = '与{0}相等'
-	if cmper.index in [8, 9]:
-		rho = random.random()
-		if rho < 0.1 and not no_negative:
-			cmper.set_negative()
+
 	if available_values is None:
 		raise AssertionError
 
@@ -480,6 +477,12 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 		value = random.choices(range(101), k=num_values, weights=count_dist)
 		for i in range(len(value)):
 			value[i] = VALUENP(str(value[i]), str(value[i]), str(value[i]), 'int')
+
+	# set negative is moved below 'set_mode' in order to avoid 'starts with not xxx'
+	if cmper.index in [8, 9]:
+		rho = random.random()
+		if rho < 0.1 and not no_negative:
+			cmper.set_negative()
 
 	if num_values == 1:
 		if not isinstance(value[0], VALUENP):
@@ -1016,7 +1019,7 @@ class CDT(BASENP):
 
 # convert a query in json format into a NP type object
 # pid needs to +1 because 0 is occupied by * in SPIDER format
-def np_from_entry(entry_sql, typenps, propertynps, fk_rels):
+def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 	table_ids = []
 	for item in entry_sql['from']['table_units']:
 		if item[0] == 'sql':
@@ -1381,7 +1384,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels):
 				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
 				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tid=main_tid)
-	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=True)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize)
 	return final_np, final_qrynp
 
 
@@ -1815,28 +1818,42 @@ class QRYNP:
 				elif idx + 2 == len(self.np.queried_props):
 					sent_1 += ' and '
 
-		# table info
-		if num_tables > 1 or need_from_even_single:
-			sent_1 += ' from '
-			for idx, table_id in enumerate(self.np.table_ids):
+		# simplify the canonical utterances for join-on conditions when possible in order to help turkers understand
+		# and more accurately annotate
+		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and self.np.main_tid is not None:
+			assert num_tables > 1 and len(self.np.table_ids) > 1 and self.np.main_tid in self.np.table_ids
+			sent_1 += ' from ' + typenps[self.np.main_tid].c_english + ' and their corresponding '
+			other_tids = self.np.table_ids
+			other_tids.remove(self.np.main_tid)
+			assert self.np.main_tid not in other_tids  # assert that there is one and only one main_tid in the table_ids
+			for idx, table_id in enumerate(other_tids):
 				sent_1 += typenps[table_id].c_english
-				if idx + 2 < len(self.np.table_ids):
+				if idx + 2 < len(other_tids):
 					sent_1 += ', '
-				elif idx + 2 == len(self.np.table_ids):
+				elif idx + 2 == len(other_tids):
+					sent_1 += ' and '
+		else:
+			# table info
+			if num_tables > 1 or need_from_even_single:
+				sent_1 += ' from '
+				for idx, table_id in enumerate(self.np.table_ids):
+					sent_1 += typenps[table_id].c_english
+					if idx + 2 < len(self.np.table_ids):
+						sent_1 += ', '
+					elif idx + 2 == len(self.np.table_ids):
+						sent_1 += ' and '
+			# join-on conditions info
+			if self.np.join_cdts is not None and len(self.np.join_cdts) > 0:
+				sent_1 += ' whose '
+			else:
+				self.np.join_cdts = []
+			for idx, cond in enumerate(self.np.join_cdts):
+				sent_1 += cond.c_english
+				if idx + 2 < len(self.np.join_cdts):
+					sent_1 += ', '
+				elif idx + 2 == len(self.np.join_cdts):
 					sent_1 += ' and '
 
-		# join-on conditions info
-		if self.np.join_cdts is not None:
-			if len(self.np.join_cdts) > 0:
-				sent_1 += ' whose '
-		else:
-			self.np.join_cdts = []
-		for idx, cond in enumerate(self.np.join_cdts):
-			sent_1 += cond.c_english
-			if idx + 2 < len(self.np.join_cdts):
-				sent_1 += ', '
-			elif idx + 2 == len(self.np.join_cdts):
-				sent_1 += ' and '
 		c_english.append(sent_1)
 
 		# where conditions info
@@ -2650,11 +2667,16 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				if idx not in groupby_prop_ids:
 					having_usable_prop_ids.append(idx)
 			if rho < 0.03:
-				having_cdts.append(construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat, prop_mat,
+
+				cur_having_cdt = construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat, prop_mat,
 													prop_rels, fk_rels, True, cursor=cursor, no_negative=True,
-													verbose=print_verbose))
+													verbose=print_verbose)
+				if cur_having_cdt is not None:
+					having_cdts.append(cur_having_cdt)
 			elif rho < 0.15:
-				having_cdts.append(construct_cv_where_cdt(having_usable_prop_ids, propertynps, True, no_negative=True))
+				cur_having_cdt = construct_cv_where_cdt(having_usable_prop_ids, propertynps, True, no_negative=True)
+				if cur_having_cdt is not None:
+					having_cdts.append(cur_having_cdt)
 			elif rho < 0.4:
 				_star = copy.deepcopy(STAR_PROP)
 				_star.set_aggr(3)
@@ -2665,7 +2687,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 				having_cdts.append(construct_cv_where_cdt([], propertynps, True, _star, no_negative=True))
-
+			assert not None in having_cdts
 			# if all groups or no groups are excluded after this 'having_cdts', then don't add this 'having_cdts'
 			_prop = copy.deepcopy(STAR_PROP)
 			_prop.set_aggr(3)
@@ -3984,7 +4006,7 @@ def convert(file_path):
 		dct_idx = _ + args.start_from
 		if dct_idx in skip_list:
 			continue
-		if dct_idx % 500 == 1:
+		if dct_idx % 100 == 1:
 			print("turn %d begins!" % dct_idx)
 			print(skip_list)
 		if dct['db_id'] != last_dbid:
@@ -4001,7 +4023,8 @@ def convert(file_path):
 		#pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
 
 		try:
-			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels)
+			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
+								 finalize=True)
 		except KeyError as e:
 			print("False gold SQL: %d" % dct_idx)
 			print(dct['query'])
@@ -4024,10 +4047,10 @@ def convert(file_path):
 		#	continue
 		else:
 			np, qrynp = pack
-		#for line in qrynp.c_english_sequence:
-		#	print(line)
-		#print("Gold: "+dct['question'])
-		#print("")
+		for line in qrynp.c_english_sequence:
+			print(line)
+		print("Gold: "+dct['question'])
+		print("")
 		res = {'sql': dct['query'], 'query_toks': dct['query_toks'], 'query_toks_no_value': dct['query_toks_no_value'],
 			   'gold_question': dct['question'], 'canonical_ce': qrynp.c_english_verbose,
 			   'canonical_ce_sequence': qrynp.c_english_sequence}
