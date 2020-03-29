@@ -4004,8 +4004,6 @@ def convert(file_path):
 	res_json = []
 	for _, dct in enumerate(sql_dcts[args.start_from:]):
 		dct_idx = _ + args.start_from
-		if dct_idx in skip_list:
-			continue
 		if dct_idx % 100 == 1:
 			print("turn %d begins!" % dct_idx)
 			print(skip_list)
@@ -4031,7 +4029,11 @@ def convert(file_path):
 			print(entry_sql['from']['table_units'])
 			if dct_idx not in skip_list:
 				skip_list.append(dct_idx)
-			raise
+				raise
+			else:
+				continue
+		if dct_idx in skip_list:
+			print("!")
 		if isinstance(pack, str):
 			print("Unexpressable_entry_occurred!")
 			print(dct['query'])

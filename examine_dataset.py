@@ -3,7 +3,7 @@ import json
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-p', '--data_path', type=str, default=0)
+parser.add_argument('-p', '--data_path', type=str, default='./spider/spider/train_spider.json')
 args = parser.parse_args()
 
 with open(args.data_path, 'r') as fp:
@@ -163,6 +163,10 @@ for entry_id, entry in enumerate(data):
 
 	coexistable_table_pairs = []
 	columns_used_by_join = []
+
+	if len(entry['sql']['from']['conds']) > 1:
+		print(entry)
+
 	# about the conditions used in joining the tables
 	for cond in entry['sql']['from']['conds']:
 		try:
