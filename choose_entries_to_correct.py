@@ -1,6 +1,11 @@
 import numpy as np
 import json
 import copy
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-m', '--mode', type=str, default='skip')
+parser.add_argument('-f', '--input_filename', type=str, default='train_spider.json')
 
 
 def get_from_info(table_dct, meta):
@@ -87,19 +92,51 @@ skip_list = [6, 425, 426, 437, 438, 521, 522, 629, 630, 631, 632, 635, 636, 639,
 			 5705, 5760, 5761, 5778, 5779, 5794, 5795, 5959, 5960, 6079, 6080, 6081, 6082, 6085, 6086, 6107,
 			 6108, 6109, 6110, 6111, 6112, 6137, 6138, 6141, 6142, 6619, 6797, 6798, 6799, 6800, 6955]
 
+hidden_faulty_list = [13, 81, 82, 85, 86, 93, 94, 423, 424, 658, 659, 1037, 1282, 1283, 1289, 1317, 1318,
+						  1319, 1386, 1387, 1450, 1451, 1456, 1457, 1460, 1461, 1501, 1503, 1621, 1622, 1640,
+						  1646, 1728, 1729, 1730, 1790, 1791, 1798, 1799, 1800, 1801, 1810, 1811, 1816, 1817,
+						  1818, 1819, 1822, 1823, 1839, 1843, 1906, 1953, 1966, 1987, 1988, 1989, 2027, 2028,
+						  2029, 2030, 2037, 2038, 2092, 2251, 2252, 2253, 2254, 2255, 2256, 2476, 2477, 2678,
+						  2679, 2680, 2681, 2682, 2683, 2726, 2727, 2732, 2733, 2812, 2813, 2968, 2969, 3129,
+						  3130, 3133, 3134, 3143, 3146, 3153, 3177, 3178, 3239, 3240, 3243, 3244, 3245, 3246,
+						  3279, 3280, 3311, 3312, 3313, 3314, 3315, 3316, 3317, 3318, 3461, 3462, 3517, 3518,
+						  3519, 3520, 3523, 3524, 3724, 3852, 3853, 3914, 3915, 3922, 3923, 3976, 3977, 3978,
+						  3979, 3980, 3981, 3982, 3983, 3984, 3985, 4106, 4107, 4220, 4221, 4234, 4235, 4340,
+						  4341, 4362, 4363, 4482, 4483, 4561, 4562, 4563, 4564, 4565, 4566, 4607, 4610, 4611,
+						  4612, 4819, 4820, 5068, 5069, 5182, 5183, 5186, 5187, 5196, 5197, 5240, 5241, 5258,
+						  5259, 5266, 5267, 5268, 5269, 5270, 5271, 5388, 5389, 5390, 5391, 5420, 5421, 5664,
+						  5750, 5751, 5756, 5757, 5758, 5759, 5762, 5763, 5764, 5765, 6290, 6291, 6292, 6293,
+						  6294, 6295, 6359, 6491, 6492, 6501, 6502, 6511, 6512, 6515, 6516, 6613, 6620, 6777,
+						  6778, 6996, 6997]
 
-def main():
+hidden_faulty_list = [2864, 2898, 911, 912, 913, 914, 1519, 1520, 1521, 1522, 2865, 2866, 2867, 2868, 2869,
+							2870, 2871, 2872, 2873, 2890, 2891, 2892, 2893, 2899, 2900, 2901, 2902, 2903, 3167,
+							3404, 4258, 4259, 4260, 4261, 4262, 4263, 4264, 4265, 4294, 4295, 4296, 4297, 4314,
+							4315, 4316, 4317, 4318, 4319, 4525, 4526, 4920, 4921, 4942, 4943, 5548, 5549, 5556,
+							5557, 5558, 5559, 5560, 5561, 5564, 5565, 5566, 5567, 5628, 5629, 6077, 6078, 6083,
+							6084, 6113, 6114, 6115, 6116, 6322, 6323, 6324, 6325]
+
+
+def main(args):
 	percentage = float(input('percentage point of entries to choose')) / 100
 
-	size = int(len(skip_list) * percentage)+1
-
-	chosen = np.random.choice(skip_list, size=size)
+	if args.mode == 'skip':
+		size = int(len(skip_list) * percentage)+1
+		chosen = np.random.choice(skip_list, size=size)
+	elif args.mode == 'hidden':
+		size = int(len(hidden_faulty_list) * percentage) + 1
+		chosen = np.random.choice(hidden_faulty_list, size=size)
+	elif args.mode == 'assigned':
+		chosen = np.array([5263, 6, 5569, 6614, 4524, 6110, 5230, 6110, 5146, 1417, 5742, 4304, 2209, 521, 1793, 4764,
+					  2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243])
+	else:
+		raise AssertionError
 
 	print(chosen)
 	print("chosen size: ", len(chosen))
 	print("")
 
-	with open('./spider/spider/train_spider.json', 'r') as fp:
+	with open('./spider/spider/%s' % args.input_filename, 'r') as fp:
 		train_data = json.load(fp)
 
 	with open('./spider/spider/tables_mod.json', 'r') as fp:
@@ -146,7 +183,7 @@ def main():
 		while not check:
 			entry = copy.deepcopy(ori_entry)
 			sql_from = get_from_info(table_dct, meta)
-			entry['from'] = sql_from
+			entry['sql']['from'] = sql_from
 			has_intersect = False
 			has_union = False
 			has_except = False
@@ -206,4 +243,5 @@ def main():
 
 
 if __name__ == '__main__':
-	main()
+	args = parser.parse_args()
+	main(args)
