@@ -4,18 +4,24 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dark', type=bool, default=False)
-
+parser.add_argument('-o', '--oracle', type=bool, default=False)
 args = parser.parse_args()
 if args.dark:
 	PATHS = ['concert_singer', 'pets_1', 'car_1']
+	PATHS = [os.path.join('saved_results', path, 'qrys_saved.json') for path in PATHS]
+	OUT_PATHS = [os.path.join('saved_results', path, 'input.csv') for path in PATHS]
+elif args.oracle:
+	PATHS = ['./SPIDER_canonicals_random.json']
+	OUT_PATHS = ['./SPIDER_input.csv']
 else:
-	PATHS = ['']
+	PATHS = [os.path.join('saved_results', 'qrys_saved.json')]
+	OUT_PATHS = [os.path.join('saved_results', 'input.csv')]
 
-for path in PATHS:
-	with open(os.path.join('saved_results', path, 'qrys_saved.json'), 'r') as fp:
+for path, out_path in zip(PATHS, OUT_PATHS):
+	with open(path, 'r') as fp:
 		file = json.load(fp)
 
-	with open(os.path.join('saved_results', path, 'input.csv'), 'w') as fp:
+	with open(out_path, 'w') as fp:
 		fp.write('topic,sequence,answer\n')
 		for entry in file:
 			dbname = entry['db_id'].split('_')

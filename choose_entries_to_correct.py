@@ -128,7 +128,8 @@ def main(args):
 		chosen = np.random.choice(hidden_faulty_list, size=size)
 	elif args.mode == 'assigned':
 		chosen = np.array([5263, 6, 5569, 6614, 4524, 6110, 5230, 6110, 5146, 1417, 5742, 4304, 2209, 521, 1793, 4764,
-					  2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243])
+					  2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243, 1522, 2865,
+					  4258, 2873])
 	else:
 		raise AssertionError
 
@@ -143,6 +144,7 @@ def main(args):
 		table_meta = json.load(fp)
 
 	res = []
+	changed_res = []
 
 	for entry_idx, entry in enumerate(train_data):
 		ori_entry = copy.deepcopy(entry)
@@ -230,11 +232,15 @@ def main(args):
 			if 'yes' in check_str:
 				check = True
 				res.append(entry)
+				changed_res.append(entry)
 
 	assert len(res) == len(train_data)
 
 	with open('./spider/spider/train_spider_corrected.json', 'w') as fp:
 		json.dump(res, fp, indent=4)
+
+	with open('./spider/spider/train_spider_reminder.json', 'w') as fp:
+		json.dump(changed_res, fp, indent=4)
 
 	with open('./spider/spider/sql_from_corrected_entry_idxs.json', 'w') as fp:
 		json.dump(chosen.tolist(), fp)

@@ -1064,26 +1064,27 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 		elif item.left.is_fk_right and item.right.is_fk_left:
 			tids_is_left[item.right.table_id] = True
 			tids_is_right[item.left.table_id] = True
-	main_tid = None
+	main_tid = []
 	join_simplifiable = True
 	if len(table_ids) > 1:
 		for tid in table_ids:
 			if tids_is_left[tid] is True and tids_is_right[tid] is False:
-				if main_tid is not None:
-					print("")
-				main_tid = tid
+				if len(main_tid) > 0:
+					print("!")
+				main_tid.append(tid)
 			# for cases where it's about two instances of the same table
 			elif len(tids_is_left) == 1 and len(tids_is_right) == 1:
-				main_tid = tid
+				main_tid.append(tid)
 				join_simplifiable = False
 			# if medium tables exist or multiple instances of same table exist, join conditions cannot be simplified
 			# because it'll lose the dependency hierarchy
 			elif tids_is_left[tid] is True and tids_is_right[tid] is True:
 				join_simplifiable = False
 	else:
-		main_tid = table_ids[0]
+		main_tid = [table_ids[0]]
 
-	if join_simplifiable and main_tid is not None:
+	# check whether the tables joined together have multiple foreign-key reations, if so, then it's not simplifiable
+	if join_simplifiable and len(main_tid) > 0:
 		for item in join_cdts:
 			tid1 = item.left.table_id
 			tid2 = item.right.table_id
@@ -1097,17 +1098,6 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 			# canonical utterance of join conditions ambiguity would occur
 			if join_cdts_cnt > 1:
 				join_simplifiable = False
-
-	'''
-	if len(table_ids) == 1:
-		main_tid = table_ids[0]
-	elif len(table_ids) == 2 and len(join_cdts) == 1:
-		assert isinstance(join_cdts[0].left, PROPERTYNP) and isinstance(join_cdts[0].right, PROPERTYNP)
-		if join_cdts[0].left.is_unique and not join_cdts[0].right.is_unique:
-			main_tid = join_cdts[0].right.table_id
-		elif join_cdts[0].right.is_unique and not join_cdts[0].left.is_unique:
-			main_tid = join_cdts[0].right.table_id
-	'''
 
 	queried_props = []
 	for item in entry_sql['select'][1]:
@@ -1126,9 +1116,12 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 		if aggr == 3:
 			prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
 			if pid < 0:
-				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if main_tid is not None:
-					type_to_count = typenps[main_tid]
+				# if there are single2multiple foreign key relationships between the multiple tables
+				#
+				# if there are multiple join-on heads, then it'd be unclear which one is to be counted,
+				# in such cases we rollback to using traditional 'number of entries'
+				if len(main_tid) == 1:
+					type_to_count = typenps[main_tid[0]]
 					prop.c_english = ' the number of %s ' % type_to_count.c_english
 					prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 		else:
@@ -1258,8 +1251,8 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 			chosen_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=aggr_distinct)
 			if pid1 < 0:
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if main_tid is not None:
-					type_to_count = typenps[main_tid]
+				if len(main_tid) == 1:
+					type_to_count = typenps[main_tid[0]]
 					chosen_prop.c_english = ' the number of %s ' % type_to_count.c_english
 					chosen_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 		else:
@@ -1324,8 +1317,8 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 				ob_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
 				if ob_pid < 0:
 					# if there are single2multiple foreign key relationships between the multiple tables, the
-					if main_tid is not None:
-						type_to_count = typenps[main_tid]
+					if len(main_tid) == 1:
+						type_to_count = typenps[main_tid[0]]
 						ob_prop.c_english = ' the number of %s ' % type_to_count.c_english
 						ob_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
 			else:
@@ -1380,7 +1373,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 	distinct = entry_sql['select'][0]
 
 	if not join_simplifiable:
-		main_tid = None
+		main_tid = []
 	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
 				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
@@ -1731,16 +1724,19 @@ class QRYNP:
 
 		if self.np.cdts is not None:
 			if len(self.np.cdts) > 0:
-				c_english += ', whose '
+				if self.np.join_cdts is not None and len(self.np.join_cdts) > 0:
+					c_english += ','
+				c_english += ' whose '
 		else:
 			self.np.cdts = []
+
 		for idx, cond in enumerate(self.np.cdts):
 			c_english += cond.c_english
 			if idx + 1 < len(self.np.cdts):
 				c_english += ' ' + self.np.cdt_linkers[idx] + ' '
 
 		if self.np.limit is not None:
-			limit_ce = 'top %d of ' % self.np.limit
+			limit_ce = 'top %d of them ' % self.np.limit
 		else:
 			limit_ce = ''
 
@@ -1753,7 +1749,7 @@ class QRYNP:
 					_order = 'descending'
 				else:
 					raise AssertionError
-				c_english += ', present %sthem in %s order of ' % (limit_ce, _order)
+				c_english += ', %spresented in %s order of ' % (limit_ce, _order)
 		else:
 			self.np.orderby_props = []
 		for idx, item in enumerate(self.np.orderby_props):
@@ -1821,12 +1817,21 @@ class QRYNP:
 
 		# simplify the canonical utterances for join-on conditions when possible in order to help turkers understand
 		# and more accurately annotate
-		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and self.np.main_tid is not None:
-			assert num_tables > 1 and len(self.np.table_ids) > 1 and self.np.main_tid in self.np.table_ids
-			sent_1 += ' from ' + typenps[self.np.main_tid].c_english + ' and their corresponding '
+		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tid) > 0:
+			assert num_tables > 1 and len(self.np.table_ids) > 1
+			for mid in self.np.main_tid:
+				assert mid in self.np.table_ids
+			sent_1 += ' from '
+			for mtid_idx, mtid in enumerate(self.np.main_tid):
+				sent_1 += typenps[mtid].c_english
+				if mtid_idx < len(self.np.main_tid)-1:
+					sent_1 += ', '
+			sent_1 += ' and their corresponding '
 			other_tids = self.np.table_ids
-			other_tids.remove(self.np.main_tid)
-			assert self.np.main_tid not in other_tids  # assert that there is one and only one main_tid in the table_ids
+			for mtid in self.np.main_tid:
+				other_tids.remove(mtid)
+			for mtid in self.np.main_tid:
+				assert mtid not in other_tids
 			for idx, table_id in enumerate(other_tids):
 				sent_1 += typenps[table_id].c_english
 				if idx + 2 < len(other_tids):
@@ -2439,25 +2444,26 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		elif item.left.is_fk_right and item.right.is_fk_left:
 			tids_is_left[item.right.table_id] = True
 			tids_is_right[item.left.table_id] = True
-	main_tid = None
+	main_tid = []
 	join_simplifiable = True
 	if len(table_ids) > 1:
 		for tid in table_ids:
 			if tids_is_left[tid] is True and tids_is_right[tid] is False:
-				assert main_tid is None
-				main_tid = tid
+				if len(main_tid) > 0:
+					print("!!")
+				main_tid.append(tid)
 			# for cases where it's about two instances of the same table
 			elif len(tids_is_left) == 1 and len(tids_is_right) == 1:
-				main_tid = tid
+				main_tid.append(tid)
 				join_simplifiable = False
 			# if medium tables exist or multiple instances of same table exist, join conditions cannot be simplified
 			# because it'll lose the dependency hierarchy
 			elif tids_is_left[tid] is True and tids_is_right[tid] is True:
 				join_simplifiable = False
 	else:
-		main_tid = table_ids[0]
+		main_tid = [table_ids[0]]
 
-	if join_simplifiable and main_tid is not None:
+	if join_simplifiable and len(main_tid) > 0:
 		for item in join_cdts:
 			tid1 = item.left.table_id
 			tid2 = item.right.table_id
@@ -2683,8 +2689,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				_star.set_aggr(3)
 
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if main_tid is not None:
-					type_to_count = typenps[main_tid]
+				if len(main_tid) == 1:
+					type_to_count = typenps[main_tid[0]]
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 				having_cdts.append(construct_cv_where_cdt([], propertynps, True, _star, no_negative=True))
@@ -2816,8 +2822,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			if rho < 0.9 or groupby_prop_ids is not None:
 				_star.set_aggr(3)
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if main_tid is not None:
-					type_to_count = typenps[main_tid]
+				if len(main_tid) == 1:
+					type_to_count = typenps[main_tid[0]]
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 			props2query.append(_star)
@@ -3012,8 +3018,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				_star = copy.deepcopy(STAR_PROP)
 				_star.set_aggr(3)
 				# if there are single2multiple foreign key relationships between the multiple tables, the
-				if main_tid is not None:
-					type_to_count = typenps[main_tid]
+				if len(main_tid) == 1:
+					type_to_count = typenps[main_tid[0]]
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
 				orderby_props.append(_star)
@@ -3126,7 +3132,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		distinct = False
 
 	if not join_simplifiable:
-		main_tid = None
+		main_tid = []
 	final_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 				  cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 				  orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
@@ -4041,7 +4047,31 @@ def convert(file_path, mode):
 	corrected_list = [5263, 6, 5569, 6614, 4524, 6110, 5230, 6110, 5146, 1417, 5742, 4304, 2209, 521, 1793, 4764,
 					  2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243, 1522, 2865,
 					  4258, 2873]
-	to_convert_list = corrected_list + numpy.random.choice(not_skip_list, size=(353-len(corrected_list))).tolist()
+	#to_convert_list = corrected_list + numpy.random.choice(not_skip_list, size=(353-len(corrected_list))).tolist()
+	to_convert_list = [5263, 6, 5569, 6614, 4524, 6110, 5230, 6110, 5146, 1417, 5742, 4304, 2209, 521, 1793, 4764,
+					   2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243, 1522, 2865,
+					   4258, 2873, 2404, 4655, 1001, 5178, 2748, 5982, 1579, 4062, 384, 2459, 1914, 293, 3455, 6101,
+					   2077, 3371, 4283, 709, 3458, 1749, 2400, 1405, 5289, 1325, 2518, 3919, 753, 5872, 6936, 234,
+					   5413, 6489, 4974, 4013, 2377, 2536, 2271, 6223, 5029, 6231, 692, 3752, 2643, 2453, 711, 4559,
+					   615, 1744, 3786, 5362, 74, 3810, 6415, 1876, 2052, 3175, 2809, 557, 4580, 3813, 6606, 5096,
+					   4559, 1075, 4999, 3502, 341, 5416, 1994, 4041, 6754, 4438, 3005, 2952, 5551, 4463, 3299, 1125,
+					   6075, 1399, 2303, 38, 4510, 195, 2990, 48, 5656, 5755, 2613, 5234, 3777, 2101, 1970, 6862,
+					   1364, 5137, 2329, 324, 5593, 1554, 1900, 1152, 2430, 1516, 2662, 4798, 5383, 311, 3667, 6735,
+					   87, 5543, 4069, 1709, 5798, 4885, 1400, 6589, 6545, 6193, 1898, 2262, 387, 5198, 2246, 2608,
+					   2233, 3423, 5217, 3686, 5997, 3258, 4686, 5710, 6412, 2579, 387, 1739, 744, 6350, 4406, 5553,
+					   4591, 824, 5414, 6220, 3396, 6039, 6976, 1330, 4356, 1073, 4718, 869, 2101, 5827, 6091,
+					   3341, 5634, 2261, 4410, 6384, 1250, 4537, 4559, 1672, 6383, 3479, 5770, 3564, 5098, 6576, 6792,
+					   2215, 5806, 6990, 6307, 883, 2623, 6967, 217, 6841, 4150, 741, 2088, 4700, 3067, 3801, 6538,
+					   1713, 187, 3234, 3607, 2737, 329, 959, 2829, 2718, 6401, 3466, 1335, 497, 1595, 1425, 474,
+					   5945, 494, 1249, 3149, 4668, 4224, 3452, 6045, 432, 5428, 1921, 64, 865, 6248, 5510, 1050,
+					   5342, 1014, 1617, 3573, 5542, 928, 4987, 6663, 857, 858, 6916, 1871, 5143, 4084, 6312, 5133,
+					   5508, 2344, 5483, 6232, 1339, 767, 1873, 2858, 2938, 233, 4672, 1303, 3522, 5903, 4912, 6570,
+					   4683, 219, 60, 6356, 2926, 2036, 5454, 375, 2787, 546, 3623, 4142, 1616, 2522, 2783, 3749,
+					   5289, 1639, 6153, 3860, 1583, 1656, 2158, 6747, 2648, 449, 3563, 1121, 5790, 2762, 4440,
+					   5219, 4538, 580, 5898, 1258, 2860, 6803, 2305, 6156, 3567, 4101, 1373, 2064, 154, 3574, 2647,
+					   6268, 1209, 5299, 6887, 3652, 2305, 389, 308, 6586, 4706, 3152, 2036, 1114, 6426, 5680, 4568,
+					   309, 5710]
+
 	print('to_convert_list: ')
 	print(to_convert_list)
 	unexpressable_cnt = 0
@@ -4061,6 +4091,7 @@ def convert(file_path, mode):
 			for db_idx, item in enumerate(meta_data):
 				if item['db_id'] == dct['db_id']:
 					db_num = db_idx
+					meta = item
 					break
 			assert db_num is not None
 			database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, \
@@ -4083,8 +4114,10 @@ def convert(file_path, mode):
 			if dct_idx not in skip_list:
 				skip_list.append(dct_idx)
 				raise
-			else:
+			elif dct_idx not in corrected_list:
 				continue
+			else:
+				raise
 		if (dct_idx in skip_list or dct_idx in hidden_faulty_list) and dct_idx not in corrected_list and mode == 'random':
 			print("!")
 			raise AssertionError
@@ -4128,7 +4161,7 @@ def convert(file_path, mode):
 		#	   'gold_question': dct['question'], 'canonical_ce': qrynp.c_english_verbose,
 		#	   'canonical_ce_sequence': qrynp.c_english_sequence}
 		#res_json.append(res)
-		#res_json.append(qry_formatted)
+		res_json.append(qry_formatted)
 	print(len(skip_list))
 	print("hidden faulty list: ")
 	print(hidden_faulty_list)
