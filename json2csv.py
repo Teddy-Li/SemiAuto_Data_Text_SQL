@@ -1,10 +1,12 @@
 import json
 import os
 import argparse
+import random
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dark', type=bool, default=False)
 parser.add_argument('-o', '--oracle', type=bool, default=False)
+parser.add_argument('-p', '--pilot', type=bool, default=False)
 args = parser.parse_args()
 if args.dark:
 	PATHS = ['concert_singer', 'pets_1', 'car_1']
@@ -20,6 +22,9 @@ else:
 for path, out_path in zip(PATHS, OUT_PATHS):
 	with open(path, 'r') as fp:
 		file = json.load(fp)
+
+	if args.pilot:
+		file = random.sample(file, k=50)
 
 	with open(out_path, 'w') as fp:
 		fp.write('topic,sequence,answer\n')
@@ -70,6 +75,13 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			answer = ' <br> '.join(entry['answer_sample'])
 			answer = answer.replace('\"', '')
 			answer = '\"'+answer+'\"'
-			res = [topic, sequence, answer]
+
+			gold = entry['question_gold']
+			gold = '\"'+gold+'\"'
+
+			qry_idx = entry['global_idx']
+			qry_idx = '\"'+str(qry_idx)+'\"'
+
+			res = [topic, sequence, answer, gold, qry_idx]
 			fp.write(','.join(res)+'\n')
 

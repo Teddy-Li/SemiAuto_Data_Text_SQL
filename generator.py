@@ -4156,7 +4156,8 @@ def convert(file_path, mode):
 			sample_results = [random.choice(qry_returned)]
 		headers = [tup[0] for tup in crsr.description]
 		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=sample_results, headers=headers)
-
+		qry_formatted['question_gold'] = dct['question']
+		qry_formatted['global_idx'] = dct_idx
 		#res = {'sql': dct['query'], 'query_toks': dct['query_toks'], 'query_toks_no_value': dct['query_toks_no_value'],
 		#	   'gold_question': dct['question'], 'canonical_ce': qrynp.c_english_verbose,
 		#	   'canonical_ce_sequence': qrynp.c_english_sequence}
