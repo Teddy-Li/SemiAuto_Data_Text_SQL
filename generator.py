@@ -1883,7 +1883,7 @@ class QRYNP:
 						len(c_english), len(c_english) - 1)
 				else:
 					cur_sent = 'Result {0[%d]}: Find in addition to Result {0[%d]}, those from Result {0[%d]} satisfying ' % (
-						len(c_english), len(c_english) - 1, 0)
+						len(c_english), len(c_english) - 1, max(0, len(c_english)-2))
 			cur_sent += self.np.cdts[_idx].c_english
 			if next_column_id is not None and next_column_id == self.np.cdts[_idx].left.overall_idx:
 				cur_sent += ' ' + self.np.cdt_linkers[_idx]
@@ -1917,6 +1917,7 @@ class QRYNP:
 					break
 			if not in_groupby:
 				selected_in_groupby = False
+				break
 
 		# groupby info
 		if self.np.group_props is not None:
@@ -2012,7 +2013,10 @@ class QRYNP:
 					orderby_sent += item.c_english.format('')
 					if idx + 1 < len(self.np.orderby_props):
 						if istop1:
-							orderby_sent += ' '
+							if idx+2 == len(self.np.orderby_props):
+								orderby_sent += ' and '
+							else:
+								orderby_sent += ', '
 						else:
 							orderby_sent += ' then '
 				c_english.append(orderby_sent)
@@ -2167,14 +2171,69 @@ class QRYNP:
 		c_chinese = []
 		sent_1 = 'Result {0[0]}：'
 
-		sent_1 += '从'
-		for idx, table_id in enumerate(self.np.table_ids):
-			sent_1 += typenps[table_id].c_chinese
-			if idx + 2 < len(self.np.table_ids):
-				sent_1 += '、'
-			elif idx + 2 == len(self.np.table_ids):
-				sent_1 += '和'
-		sent_1 += '中找出，'
+		need_from_even_single = False
+		for idx, prop in enumerate(self.np.queried_props):
+			# if it is a '*' column
+			if isinstance(prop.table_id, list):
+				sent_1 += prop.c_chinese
+				if prop.aggr != 3:
+					need_from_even_single = True
+
+		# simplify the canonical utterances for join-on conditions when possible in order to help turkers understand
+		# and more accurately annotate
+		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tid) > 0:
+			assert num_tables > 1 and len(self.np.table_ids) > 1
+			for mid in self.np.main_tid:
+				assert mid in self.np.table_ids
+			sent_1 += '从'
+			for mtid_idx, mtid in enumerate(self.np.main_tid):
+				sent_1 += typenps[mtid].c_chinese
+				if mtid_idx < len(self.np.main_tid)-1:
+					sent_1 += '、'
+			sent_1 += '以及相应的'
+			other_tids = self.np.table_ids
+			for mtid in self.np.main_tid:
+				other_tids.remove(mtid)
+			for mtid in self.np.main_tid:
+				assert mtid not in other_tids
+			for idx, table_id in enumerate(other_tids):
+				sent_1 += typenps[table_id].c_chinese
+				if idx + 2 < len(other_tids):
+					sent_1 += '、'
+				elif idx + 2 == len(other_tids):
+					sent_1 += '和'
+			sent_1 += '中，找出'
+		else:
+			# table info
+			if num_tables > 1 or need_from_even_single:
+				sent_1 += '从'
+				# join-on conditions info
+				if self.np.join_cdts is not None and len(self.np.join_cdts) > 0:
+					sent_1 += '符合'
+				else:
+					self.np.join_cdts = []
+
+				for idx, cond in enumerate(self.np.join_cdts):
+				sent_1 += cond.c_chinese
+				if idx + 2 < len(self.np.join_cdts):
+					sent_1 += '、'
+				elif idx + 2 == len(self.np.join_cdts):
+					sent_1 += '以及'
+				if len(self.np.join_cdts) > 0:
+					sent_1 += '的'
+				for idx, table_id in enumerate(self.np.table_ids):
+					sent_1 += typenps[table_id].c_chinese
+					if idx + 2 < len(self.np.table_ids):
+						sent_1 += '、'
+					elif idx + 2 == len(self.np.table_ids):
+						sent_1 += '和'
+				sent_1 += '中，找出'
+			else:
+				sent_1 += '找出'
+
+
+		if self.np.distinct:
+			sent_1 += '全部不同的'
 
 		# queried_props info
 		tableid_of_last_prop = None
@@ -2201,6 +2260,7 @@ class QRYNP:
 				# if it is a '*' column
 				if isinstance(prop.table_id, list):
 					sent_1 += STAR_PROP.c_chinese
+					need_from_even_single = True
 				else:
 					if prop.table_id == tableid_of_last_prop:
 						name = propertynps[prop.overall_idx].c_chinese.format('')
@@ -2212,15 +2272,19 @@ class QRYNP:
 					sent_1 += '、'
 				elif idx + 2 == len(self.np.queried_props):
 					sent_1 += '和'
-		if self.np.distinct:
-			sent_1 += '的全部不同取值'
 		c_chinese.append(sent_1)
 
-		# where conditions info
+		# where conditions inf
 		is_and = None  # whether the condition linker for where conditions is 'and'
 		if self.np.cdts is None:
 			self.np.cdts = []
-		for idx, cond in enumerate(self.np.cdts):
+		linkers_trans = {'and': '且', 'or': '或'}  # translates cdt_linkers 'and' & 'or' into Chinese words
+		_idx = 0  # the index of condition to work on
+		while _idx < len(self.np.cdts):
+			if _idx + 1 < len(self.np.cdts):
+				next_column_id = self.np.cdts[_idx + 1].left.overall_idx  # if not the last one, check the column for next cdt
+			else:
+				next_column_id = None
 			# allows for 'and' & 'or' linkers both present in a set of 'where' conditions (though not useful as of
 			# SPIDER's scope)
 			if is_and is None:
@@ -2231,77 +2295,165 @@ class QRYNP:
 					cur_sent = 'Result {0[%d]}：从Result {0[%d]}中，找出满足' % (
 						len(c_chinese), len(c_chinese) - 1)
 				else:
-					cur_sent = 'Result {0[%d]}：在Result {0[%d]}之余，找出Result {0[%d]}中满足' % (
-						len(c_chinese), len(c_chinese) - 1, 0)
-			cur_sent += cond.c_chinese
-			cur_sent += '的内容'
-			if idx < len(self.np.cdts) - 1:
-				is_and = (self.np.cdt_linkers[idx] == 'and')  # is_and value may change from True to False
+					cur_sent = 'Result {0[%d]}: 在Result {0[%d]}之余，找出 Result {0[%d]}中满足' % (
+						len(c_chinese), len(c_chinese) - 1, max(0, len(c_chinese)-2))
+			cur_sent += self.np.cdts[_idx].c_chinese
+			if next_column_id is not None and next_column_id == self.np.cdts[_idx].left.overall_idx:
+				cur_sent += linkers_trans[self.np.cdt_linkers[_idx]]
+				next_cond = self.np.cdts[_idx + 1]
+				if isinstance(next_cond.right, numpy.ndarray) or isinstance(next_cond.right, list):
+					value_cc = []
+					for item in next_cond.right:
+						value_cc.append(item.c_chinese)
+					utt_next = next_cond.cmper.c_chinese.format(value_cc)
+				elif isinstance(next_cond.right, PROPERTYNP):
+					utt_next = next_cond.cmper.c_chinese.format(next_cond.right.c_chinese.format(''))
+				elif isinstance(next_cond.right, QRYNP):
+					utt_next = next_cond.cmper.c_chinese.format(' ( ' + next_cond.right.c_chinese + ' ) ')
+				else:
+					raise AssertionError
+				cur_sent += utt_next
+				_idx += 1
+			cur_sent += '的部分'
+			if _idx < len(self.np.cdts) - 1:
+				is_and = (self.np.cdt_linkers[_idx] == 'and')  # is_and value may change from True to False
 			c_chinese.append(cur_sent)
+			_idx += 1
+
+
+		# check if every selected property can be found in 'group-by' property list
+		selected_in_groupby = True
+		for prop_1 in self.np.queried_props:
+			in_groupby = False
+			for prop_2 in self.np.group_props:
+				if prop_1.overall_idx == prop_2.overall_idx:
+					in_groupby = True
+					break
+			if not in_groupby:
+				selected_in_groupby = False
+				break
 
 		# groupby info
-		if self.np.group_props is not None:
-			if len(self.np.group_props) > 0:
-				groupby_sent = 'Result {0[%d]}：从{0[%d]}中，在每个' % (
-					len(c_chinese), len(c_chinese) - 1)
-				if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
-					groupby_sent += '满足'
-					for hv_idx, item in enumerate(self.np.having_cdts):
-						groupby_sent += item.c_chinese
-						if hv_idx < len(self.np.having_cdts)-1:
-							groupby_sent += '、'
-					groupby_sent += '的、'
-				for idx, prop in enumerate(self.np.group_props):
-					groupby_sent += prop.c_chinese.format('')
-					if idx + 2 < len(self.np.group_props):
-						groupby_sent += '、'
-					elif idx + 2 == len(self.np.group_props):
-						groupby_sent += '和'
-				groupby_sent += '的取值下，找出'
+		if self.np.group_props is not None and len(self.np.group_props) > 0:
+			groupby_sent = 'Result {0[%d]}：从Result {0[%d]}中，在每组' % (
+				len(c_chinese), len(c_chinese) - 1)
 
-				# if there are group-by clauses in query, specify the aggregators of queried props along with the
-				# group-by clause itself
-				tableid_of_last_prop = None
-				for idx, prop in enumerate(self.np.queried_props):
-					# if it is a '*' column
-					if isinstance(prop.table_id, list):
-						groupby_sent += prop.c_chinese
-					else:
-						if prop.table_id == tableid_of_last_prop:
-							name = prop.c_chinese.format('')
-						else:
-							name = prop.c_chinese.format(typenps[prop.table_id].c_chinese + '的')
-							tableid_of_last_prop = prop.table_id
-						groupby_sent += name
-					if idx + 2 < len(self.np.queried_props):
+			if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
+				groupby_sent += '满足'
+				for hv_idx, item in enumerate(self.np.having_cdts):
+					groupby_sent += item.c_chinese
+					if hv_idx+1 < len(self.np.having_cdts):
 						groupby_sent += '、'
-					elif idx + 2 == len(self.np.queried_props):
-						groupby_sent += '和'
-				if self.np.distinct:
-					groupby_sent += '，找出其所有的不同取值'
-				c_chinese.append(groupby_sent)
+				groupby_sent += '的'
 
-		if self.np.orderby_props is not None:
-			if len(self.np.orderby_props) > 0:
-				assert self.np.orderby_order is not None
-				if self.np.limit is not None:
-					limit_cc = '的前%d个条目顺序' % self.np.limit
+			for idx, prop in enumerate(self.np.group_props):
+				groupby_sent += prop.c_chinese.format('')
+				if idx + 2 < len(self.np.group_props):
+					groupby_sent += '、'
+				elif idx + 2 == len(self.np.group_props):
+					groupby_sent += '和'
+
+
+			# if there are group-by clauses in query, specify the aggregators of queried props along with the
+			# group-by clause itself
+			groupby_sent += '下，'
+
+			if selected_in_groupby and self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
+				groupby_sent += '找出具有'
+				if self.np.orderby_order == 'asc':
+					groupby_sent += '最小'
+				elif self.np.orderby_order == 'desc':
+					groupby_sent += '最大'
 				else:
-					limit_cc = ''
+					raise AssertionError
+				for ob_idx, item in enumerate(self.np.orderby_props):
+					groupby_sent += item.c_chinese.format('')
+					if idx+1 < len(self.np.orderby_props):
+						groupby_sent += '、'
+				groupby_sent += '的'
+				if self.np.limit != 1:
+					groupby_sent += '前%d个' % self.np.limit
+
+			elif selected_in_groupby and self.np.orderby_props is not None and len(self.np.orderby_props) > 0:
+				groupby_sent += '按照'
+				for ob_idx, item in enumerate(self.np.orderby_props):
+					groupby_sent += item.c_chinese.format('')
+					if idx+1 < len(self.np.orderby_props):
+						groupby_sent += '、'
+				groupby_sent += '的'
+				if self.np.orderby_order == 'asc':
+					groupby_sent += '升序'
+				elif self.np.orderby_order == 'desc':
+					groupby_sent += '降序'
+				else:
+					raise AssertionError
+				groupby_sent += '找出'
+
+			tableid_of_last_prop = None
+			for idx, prop in enumerate(self.np.queried_props):
+				# if it is a '*' column
+				if isinstance(prop.table_id, list):
+					groupby_sent += prop.c_chinese
+				else:
+					if prop.table_id == tableid_of_last_prop:
+						name = prop.c_chinese.format('')
+					else:
+						name = prop.c_chinese.format(typenps[prop.table_id].c_chinese + '的')
+						tableid_of_last_prop = prop.table_id
+					groupby_sent += name
+				if idx + 2 < len(self.np.queried_props):
+					groupby_sent += '、'
+				elif idx + 2 == len(self.np.queried_props):
+					groupby_sent += '和'
+
+			if self.np.distinct:
+				groupby_sent += '，找出其所有的不同取值'
+			c_chinese.append(groupby_sent)
+
+		if selected_in_groupby:
+			assert self.np.group_props is not None
+
+
+		if self.np.orderby_props is not None and len(self.np.orderby_props) > 0 and not selected_in_groupby:
+			assert self.np.orderby_order is not None
+			istop1 = None
+			if self.np.limit is not None and self.np.limit == 1:
+				istop1 = True
+				if self.np.orderby_order == 'asc':
+					_order = '最小的'
+				elif self.np.orderby_order == 'desc':
+					_order = '最大的'
+				else:
+					raise AssertionError
+				orderby_sent = 'Result {0[%d]}：找出 Result {0[%d]}中' % (
+				len(c_chinese), len(c_chinese) - 1)
+
+			else:
+				istop1 = False
+				if self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
+					limit_cc = '选出前%d个条目' % self.np.limit
+				else:
+					limit_cc = '排列'
 				if self.np.orderby_order == 'asc':
 					_order = '升序'
 				elif self.np.orderby_order == 'desc':
 					_order = '降序'
 				else:
 					raise AssertionError
-				orderby_sent = 'Result {0[%d]}：将Result {0[%d]}按' % (
+				orderby_sent = 'Result {0[%d]}: 将Result {0[%d]}按' % (
 					len(c_chinese), len(c_chinese) - 1)
-				for idx, item in enumerate(self.np.orderby_props):
-					orderby_sent += item.c_chinese.format('')
-					if idx + 1 < len(self.np.orderby_props):
-						orderby_sent += '、'
-				orderby_sent += '的%s排列%s展示' % (_order, limit_cc)
-				c_chinese.append(orderby_sent)
+
+			for idx, item in enumerate(self.np.orderby_props):
+				orderby_sent += item.c_chinese.format('')
+				if idx + 1 < len(self.np.orderby_props):
+					orderby_sent += '、'
+
+			if is_top1:
+				orderby_sent += _order
+			else:
+				orderby_sent += '的%s%s' % (_order, limit_cc)
+			c_chinese.append(orderby_sent)
+
 
 		if self.np.has_union or self.np.has_except or self.np.has_intersect:
 			second_sents = self.np.qrynp_2.c_chinese_sequence
@@ -2312,13 +2464,15 @@ class QRYNP:
 			second_sents = second_sents.split(' ### ')
 			c_chinese += second_sents
 			if self.np.has_union:
-				post_clause = 'Result {0[%d]}：返回 Result {0[%d]} 中的所有条目和 Result {0[%d]} 中的所有条目' \
+				post_clause = 'Result {0[%d]}：返回 Result {0[%d]} 中的全部内容和 Result {0[%d]} 中的全部内容' \
 							  % (len(c_chinese), len_cur_sents - 1, len_cur_sents + len_second_sents - 1)
+				assert not self.np.has_except and not self.np.has_intersect
 			elif self.np.has_except:
-				post_clause = 'Result {0[%d]}：返回 Result {0[%d]} 里面的所有条目中不被 Result {0[%d]} 包含的部分' \
+				post_clause = 'Result {0[%d]}：返回 Result {0[%d]} 中不被 Result {0[%d]} 包含的部分' \
 							  % (len(c_chinese), len_cur_sents - 1, len_cur_sents + len_second_sents - 1)
+				assert not self.np.has_intersect
 			elif self.np.has_intersect:
-				post_clause = 'Result {0[%d]}：返回所有同时在 Result {0[%d]} 和 Result {0[%d]} 中的条目' \
+				post_clause = 'Result {0[%d]}：返回所有同时在 Result {0[%d]} 和 Result {0[%d]} 中的部分' \
 							  % (len(c_chinese), len_cur_sents - 1, len_cur_sents + len_second_sents - 1)
 			else:
 				raise AssertionError
@@ -2339,7 +2493,7 @@ STAR_PROP = PROPERTYNP('everything', '全部信息', '*', 'star', overall_idx=-1
 
 CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' between {0[0]} and {0[1]}', 1),
 		  CMP(' is equal to {0}', '是{0}', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
-		  CMP(' is smaller than {0}', '比{}小', ' < {0}', 4), CMP(' is not smaller than {0}', '不比{0}小', ' >= {0}', 5),
+		  CMP(' is smaller than {0}', '比{0}小', ' < {0}', 4), CMP(' is not smaller than {0}', '不比{0}小', ' >= {0}', 5),
 		  CMP(' is not larger than {0}', '不比{0}大', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
 		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9)]
 
