@@ -1,5 +1,4 @@
 from phrase_structures import *
-from query_structure import *
 from phrase_structures import _uniquecount, _count_uniqueness_specified
 
 

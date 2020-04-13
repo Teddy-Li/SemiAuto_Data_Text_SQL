@@ -530,6 +530,8 @@ def convert(file_path, mode):
 			assert db_num is not None
 			database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, \
 			valid_database, conn, crsr, num_queries = build_spider_dataset(db_num)
+		if dct['db_id'] == 'formula_1':
+			continue
 		entry_sql = dct['sql']
 		#pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
 
@@ -538,10 +540,11 @@ def convert(file_path, mode):
 			print(dct['query'])
 			print(dct['sql']['from'])
 			hidden_faulty_list.append(dct_idx)
-		try:
-			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
+		#try:
+		pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
 								 finalize=True)
-		except KeyError as e:
+		'''
+		except Exception as e:
 			print("False gold SQL: %d" % dct_idx)
 			print(dct['query'])
 			print(entry_sql['from']['table_units'])
@@ -549,12 +552,13 @@ def convert(file_path, mode):
 				continue
 			if dct_idx not in skip_list:
 				skip_list.append(dct_idx)
-				raise
+				continue
 			#elif dct_idx not in corrected_list:
 			#	continue
 			else:
 				continue
 			#	raise
+		'''
 		if (dct_idx in skip_list or dct_idx in hidden_faulty_list) and dct_idx not in corrected_list and mode == 'random':
 			print("!")
 			raise AssertionError

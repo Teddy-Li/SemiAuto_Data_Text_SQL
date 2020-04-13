@@ -494,3 +494,135 @@ def sql_is_same(qry1, qry2):
 			return False
 	'''
 	return True
+
+
+def solve_ztok_aggr(z_toks):
+	washed_ztoks = []
+	for item in z_toks:
+		if len(item) > 0:
+			washed_ztoks.append(item)
+	z_toks = washed_ztoks
+
+	tok_idx = 0
+	new_ztoks = []
+	aggregator_present = False
+	while tok_idx < len(z_toks):
+		item = z_toks[tok_idx]
+		item_splitted = []
+		if 'avg(' in item.lower():
+			aggregator_present = True
+			item_splitted += ['avg', '(']
+			if item[-1] == ')':
+				item_splitted.append(item[4:-1])
+				item_splitted.append(')')
+			else:
+				item_splitted.append(item[4:])
+				tok_idx += 1
+				lapsed = 1
+				while z_toks[tok_idx][-1] != ')':
+					item_splitted.append(z_toks[tok_idx])
+					tok_idx += 1
+					lapsed += 1
+				# assert that a count(xxx) clause does not contain more than 2 spaces within the paratheses
+				if lapsed > 4:
+					print(z_toks)
+					raise AssertionError
+				item_splitted.append(z_toks[tok_idx][:-1])
+				item_splitted.append(')')
+
+		elif 'max(' in item.lower():
+			aggregator_present = True
+			item_splitted += ['max', '(']
+			if item[-1] == ')':
+				item_splitted.append(item[4:-1])
+				item_splitted.append(')')
+			else:
+				item_splitted.append(item[4:])
+				tok_idx += 1
+				lapsed = 1
+				while z_toks[tok_idx][-1] != ')':
+					item_splitted.append(z_toks[tok_idx])
+					tok_idx += 1
+					lapsed += 1
+				# assert that a count(xxx) clause does not contain more than 2 spaces within the paratheses
+				if lapsed > 4:
+					print(z_toks)
+					raise AssertionError
+				item_splitted.append(z_toks[tok_idx][:-1])
+				item_splitted.append(')')
+
+		elif 'min(' in item.lower():
+			aggregator_present = True
+			item_splitted += ['min', '(']
+			if item[-1] == ')':
+				item_splitted.append(item[4:-1])
+				item_splitted.append(')')
+			else:
+				item_splitted.append(item[4:])
+				tok_idx += 1
+				lapsed = 1
+				while z_toks[tok_idx][-1] != ')':
+					item_splitted.append(z_toks[tok_idx])
+					tok_idx += 1
+					lapsed += 1
+				# assert that a count(xxx) clause does not contain more than 2 spaces within the paratheses
+				if lapsed > 4:
+					print(z_toks)
+					raise AssertionError
+				item_splitted.append(z_toks[tok_idx][:-1])
+				item_splitted.append(')')
+
+		elif 'sum(' in item.lower():
+			aggregator_present = True
+			item_splitted += ['sum', '(']
+			if item[-1] == ')':
+				item_splitted.append(item[4:-1])
+				item_splitted.append(')')
+			else:
+				item_splitted.append(item[4:])
+				tok_idx += 1
+				lapsed = 1
+				while z_toks[tok_idx][-1] != ')':
+					item_splitted.append(z_toks[tok_idx])
+					tok_idx += 1
+					lapsed += 1
+				# assert that a count(xxx) clause does not contain more than 2 spaces within the paratheses
+				if lapsed > 4:
+					print(z_toks)
+					raise AssertionError
+				item_splitted.append(z_toks[tok_idx][:-1])
+				item_splitted.append(')')
+
+		elif 'count(' in item.lower():
+			aggregator_present = True
+			item_splitted += ['count', '(']
+			if item[-1] == ')':
+				item_splitted.append(item[6:-1])
+				item_splitted.append(')')
+			else:
+				item_splitted.append(item[6:])
+				tok_idx += 1
+				lapsed = 1
+				while z_toks[tok_idx][-1] != ')':
+					item_splitted.append(z_toks[tok_idx])
+					tok_idx += 1
+					lapsed += 1
+				# assert that a count(xxx) clause does not contain more than 2 spaces within the paratheses
+				if lapsed > 5:
+					print(z_toks)
+					raise AssertionError
+				item_splitted.append(z_toks[tok_idx][:-1])
+				item_splitted.append(')')
+
+		else:
+			item_splitted.append(item)
+
+		new_ztoks += item_splitted
+		tok_idx += 1
+
+	if aggregator_present:
+		print("New z-toks: ")
+		print(new_ztoks)
+
+	return new_ztoks
+

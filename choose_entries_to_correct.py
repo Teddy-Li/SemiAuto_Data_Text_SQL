@@ -6,6 +6,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--mode', type=str, default='skip')
 parser.add_argument('-f', '--input_filename', type=str, default='train_spider.json')
+parser.add_argument('-o', '--out', type=str, default='train_spider_corrected.json')
 
 
 def get_from_info(table_dct, meta):
@@ -130,6 +131,8 @@ def main(args):
 		chosen = np.array([5263, 6, 5569, 6614, 4524, 6110, 5230, 6110, 5146, 1417, 5742, 4304, 2209, 521, 1793, 4764,
 					  2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243, 1522, 2865,
 					  4258, 2873])
+	elif args.mode == 'fromc':
+		chosen = np.array([1792, 1793, 1794, 1795, 3125, 3126, 5158, 5159, 5756, 5757, 6955])
 	else:
 		raise AssertionError
 
@@ -236,7 +239,7 @@ def main(args):
 
 	assert len(res) == len(train_data)
 
-	with open('./spider/spider/train_spider_corrected.json', 'w') as fp:
+	with open('./spider/spider/%s' % args.out, 'w') as fp:
 		json.dump(res, fp, indent=4)
 
 	with open('./spider/spider/train_spider_reminder.json', 'w') as fp:
