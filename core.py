@@ -21,6 +21,26 @@ AGGR_SUBQDIST = transform2distribution_proportional(
 	numpy.array([310., 66., 44., 0., 0., 90.]))  # only allow max, min, avg
 
 
+def is_simple_query(qrynp):
+	phrase = qrynp.np
+	if len(phrase.table_ids) > 2:
+		return False
+	if len(phrase.queried_props) > 3:
+		return False
+	for cdt in phrase.cdts:
+		if isinstance(cdt.right, dict):
+			return False
+	if len(phrase.group_props) > 1:
+		return False
+	if len(phrase.having_cdts) > 0:
+		return False
+	if len(phrase.orderby_props) > 1:
+		return False
+	if phrase.np_2 is not None:
+		return False
+	return True
+
+
 def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_pseudo_rels=False):
 	relevant_prop_rels = []
 	for idx, rel in enumerate(prop_rels):
@@ -411,6 +431,18 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 				cmper = copy.deepcopy(item)
 				break
 		assert cmper is not None
+		if cmper_idx == 9:
+			print(str(cond[3]))
+			if str(cond[3]).count('%') == 2:
+				cmper.set_mode('mid')
+			elif str(cond[3])[1] == '%':
+				cmper.set_mode('tail')
+			elif str(cond[3])[-2] == '%':
+				cmper.set_mode('head')
+			elif '%' not in str(cond[3]):
+				cmper.set_mode('mid')
+			else:
+				raise AssertionError
 		if negative:
 			cmper.set_negative()
 
@@ -455,17 +487,17 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 			cdts.append(cdt)
 		else:
 			try:
-				value_str = str(value)
-				value_z = '#' + value_str + '#'
 				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
+				value_z = '#' + value.z + '#'
+				value_str = value.z
 			except Exception as e:
 				raise
 			if cond[4] is not None:
 				try:
 					value_2 = cond[4]
-					value_str_2 = str(cond[4])
-					value_z_2 = '#' + value_str_2 + '#'
 					value_2 = VALUENP(str(value_2), str(value_2), str(value_2), chosen_prop.dtype)
+					value_z_2 = '#' + value_2.z + '#'
+					value_str_2 = value_2.z
 				except Exception as e:
 					raise
 				value = [value, value_2]
@@ -541,17 +573,17 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 			having_cdts.append(cdt)
 		else:
 			try:
-				value_str = str(value)
-				value_z = '#' + value_str + '#'
 				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
+				value_z = '#' + value.z + '#'
+				value_str = value.z
 			except Exception as e:
 				raise
 			if cond[4] is not None:
 				try:
 					value_2 = cond[4]
-					value_str_2 = str(cond[4])
-					value_z_2 = '#' + value_str_2 + '#'
 					value_2 = VALUENP(str(value_2), str(value_2), str(value_2), chosen_prop.dtype)
+					value_z_2 = '#' + value_2.z + '#'
+					value_str_2 = value_2.z
 				except Exception as e:
 					raise
 				value = [value, value_2]

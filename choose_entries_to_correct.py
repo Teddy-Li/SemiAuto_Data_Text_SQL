@@ -133,6 +133,8 @@ def main(args):
 					  4258, 2873])
 	elif args.mode == 'fromc':
 		chosen = np.array([1792, 1793, 1794, 1795, 3125, 3126, 5158, 5159, 5756, 5757, 6955])
+	elif args.mode == 'dev':
+		chosen = np.array([900, 901])
 	else:
 		raise AssertionError
 
@@ -241,13 +243,13 @@ def main(args):
 
 	with open('./spider/spider/%s' % args.out, 'w') as fp:
 		json.dump(res, fp, indent=4)
-
+	'''
 	with open('./spider/spider/train_spider_reminder.json', 'w') as fp:
 		json.dump(changed_res, fp, indent=4)
 
 	with open('./spider/spider/sql_from_corrected_entry_idxs.json', 'w') as fp:
 		json.dump(chosen.tolist(), fp)
-
+	'''
 	print("finished!")
 
 

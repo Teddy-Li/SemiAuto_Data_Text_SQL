@@ -70,13 +70,11 @@ def copy_back(correct_sql, spider_sql):
 
 
 def main():
-	with open('./spider/spider/train_spider.json', 'r') as fp:
+	with open('./spider/spider/dev.json', 'r') as fp:
 		spider_jsons = json.load(fp)
 
-	with open('./CSpider/train.json', 'r') as fp:
+	with open('./CSpider/dev.json', 'r') as fp:
 		cspider_jsons = json.load(fp)
-
-	assert len(spider_jsons) == 7000
 
 	new_spider_jsons = []
 
@@ -93,7 +91,7 @@ def main():
 		spider_entry['sql'] = copy.deepcopy(correct_sql)
 		new_spider_jsons.append(spider_entry)
 
-	with open('./spider/spider/train_spider_withc.json', 'w') as fp:
+	with open('./spider/spider/dev_withc.json', 'w') as fp:
 		json.dump(new_spider_jsons, fp, indent=4)
 
 

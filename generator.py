@@ -1,6 +1,6 @@
-"""
-# -*- coding: latin_1 -*-
-"""
+
+#-*- coding: latin_1 -*-
+
 
 import time
 import os
@@ -15,6 +15,7 @@ parser.add_argument('-v', '--verbose', type=bool, default=False, help='print ver
 parser.add_argument('-m', '--mode', type=str, default='run', help='which mode to run')
 parser.add_argument('-s', '--start_from', type=int, default=0, help='start_from for #convert# mode')
 parser.add_argument('-g', '--gold_path', type=str, default='./spider/spider/train_spider_corrected.json')
+parser.add_argument('-l', '--split', type=str, default='train')
 args = parser.parse_args()
 
 tableid = 0
@@ -323,9 +324,9 @@ def main(idx, verbose):
 		json.dump(f, fp, indent=4)
 
 
-def debug(verbose):
+def debug(db_idx, verbose):
 	database_path, database_name, tnps, pnps, type_m, property_m, prop_r, fk_rels, valid, conn, crsr, num_queries = build_spider_dataset(
-		1)
+		db_idx)
 	assert valid
 	fp = open('./result_0131.jsonl', 'w')
 	for i in range(ITR_TRY):
@@ -333,7 +334,8 @@ def debug(verbose):
 								  print_verbose=verbose)
 
 		print('SQL: ', qrynp.z)
-		print("Full question: ", qrynp.c_chinese)
+		print("Full question English: ", qrynp.c_english)
+		print("Full question Chinese: ", qrynp.c_chinese)
 		for item in qrynp.c_english_sequence:
 			print(item)
 		print("")
@@ -404,7 +406,7 @@ def hit(db_idx, max_iter, verbose):
 	fp.close()
 
 
-def convert(file_path, mode):
+def convert(file_path, mode, set_split):
 	assert mode in ['all', 'random']
 	with open(TABLE_METADATA_PATH, 'r') as fp:
 		meta_data = json.load(fp)
@@ -416,109 +418,20 @@ def convert(file_path, mode):
 	with open(file_path, 'r') as fp:
 		sql_dcts = json.load(fp)
 
-	skip_list = [6, 425, 426, 437, 438, 521, 522, 629, 630, 631, 632, 635, 636, 639, 640, 660, 661, 921, 922, 947,
-				 948, 955, 956, 1038, 1284, 1320, 1416, 1417, 1430, 1431, 1432, 1433, 1434, 1435, 1438, 1439, 1454,
-				 1455, 1502, 1687, 1688, 1731, 1802, 1803, 1814, 1815, 1820, 1821, 1832, 1835, 1838, 1928, 2093,
-				 2094, 2147, 2175, 2176, 2211, 2212, 2227, 2228, 2229, 2230, 2231, 2232, 2380, 2381, 2382, 2383,
-				 2472, 2473, 2478, 2479, 2480, 2481, 2524, 2525, 2651, 2684, 2685, 2724, 2725, 2730, 2731, 2814,
-				 2815, 2962, 2963, 2996, 2997, 3068, 3069, 3078, 3079, 3207, 3208, 3251, 3252, 3253, 3254, 3275,
-				 3276, 3277, 3278, 3283, 3284, 3285, 3286, 3295, 3296, 3307, 3308, 3321, 3322, 3323, 3324, 3327,
-				 3328, 3335, 3336, 3527, 3528, 3655, 3656, 3920, 3921, 3940, 3941, 3942, 3943, 3950, 3951, 3972,
-				 3973, 3974, 3975, 3988, 3989, 4108, 4109, 4324, 4325, 4334, 4335, 4336, 4337, 4348, 4349, 4380,
-				 4381, 4608, 4609, 4697, 4698, 4763, 4764, 4777, 4778, 4779, 4780, 4785, 4786, 4787, 4788, 4815,
-				 4816, 4817, 4818, 5008, 5009, 5146, 5147, 5184, 5185, 5188, 5189, 5190, 5191, 5204, 5205, 5230,
-				 5231, 5238, 5239, 5242, 5243, 5256, 5257, 5262, 5263, 5666, 5718, 5719, 5736, 5737, 5740, 5741,
-				 5742, 5743, 5744, 5745, 5746, 5747, 5748, 5749, 5752, 5753, 5766, 5767, 5864, 5865, 5931, 5932,
-				 6047, 6048, 6276, 6277, 6381, 6485, 6486, 6487, 6488, 6513, 6514, 6614, 6795, 6796, 6871, 6872,
-				 6958, 427, 428, 429, 430, 643, 644, 645, 646, 889, 890, 923, 924, 969, 970, 1288, 1792, 1793,
-				 1794, 1795, 1840, 2081, 2082, 2171, 2172, 2173, 2174, 2177, 2178, 2179, 2180, 2181, 2182, 2183,
-				 2184, 2185, 2186, 2187, 2188, 2199, 2200, 2207, 2208, 2209, 2210, 2219, 2220, 2221, 2222, 2223,
-				 2224, 2225, 2226, 2484, 2485, 2836, 2838, 2839, 2848, 2850, 2874, 2875, 2876, 2877, 2878, 2879,
-				 2880, 2881, 2882, 2883, 2884, 2885, 2886, 2887, 2888, 2889, 2894, 2895, 2896, 2897, 2908, 2909,
-				 2910, 2911, 3125, 3126, 3293, 3294, 3697, 3698, 3725, 3986, 3987, 3990, 3991, 4266, 4267, 4268,
-				 4269, 4270, 4271, 4272, 4273, 4274, 4275, 4276, 4277, 4278, 4279, 4300, 4301, 4302, 4303, 4304,
-				 4305, 4306, 4307, 4308, 4309, 4310, 4311, 4312, 4313, 4366, 4367, 4523, 4524, 4833, 4834, 4916,
-				 4917, 4922, 4923, 4924, 4925, 4928, 4929, 5158, 5159, 5440, 5441, 5562, 5563, 5568, 5569, 5570,
-				 5571, 5572, 5573, 5574, 5575, 5576, 5577, 5588, 5589, 5594, 5595, 5598, 5599, 5702, 5703, 5704,
-				 5705, 5760, 5761, 5778, 5779, 5794, 5795, 5959, 5960, 6079, 6080, 6081, 6082, 6085, 6086, 6107,
-				 6108, 6109, 6110, 6111, 6112, 6137, 6138, 6141, 6142, 6619, 6797, 6798, 6799, 6800, 6955]
-
-	# collected from 'T3'
-	hidden_faulty_list = [13, 81, 82, 85, 86, 93, 94, 423, 424, 658, 659, 1037, 1282, 1283, 1289, 1317, 1318,
-						  1319, 1386, 1387, 1450, 1451, 1456, 1457, 1460, 1461, 1501, 1503, 1621, 1622, 1640,
-						  1646, 1728, 1729, 1730, 1790, 1791, 1798, 1799, 1800, 1801, 1810, 1811, 1816, 1817,
-						  1818, 1819, 1822, 1823, 1839, 1843, 1906, 1953, 1966, 1987, 1988, 1989, 2027, 2028,
-						  2029, 2030, 2037, 2038, 2092, 2251, 2252, 2253, 2254, 2255, 2256, 2476, 2477, 2678,
-						  2679, 2680, 2681, 2682, 2683, 2726, 2727, 2732, 2733, 2812, 2813, 2968, 2969, 3129,
-						  3130, 3133, 3134, 3143, 3146, 3153, 3177, 3178, 3239, 3240, 3243, 3244, 3245, 3246,
-						  3279, 3280, 3311, 3312, 3313, 3314, 3315, 3316, 3317, 3318, 3461, 3462, 3517, 3518,
-						  3519, 3520, 3523, 3524, 3724, 3852, 3853, 3914, 3915, 3922, 3923, 3976, 3977, 3978,
-						  3979, 3980, 3981, 3982, 3983, 3984, 3985, 4106, 4107, 4220, 4221, 4234, 4235, 4340,
-						  4341, 4362, 4363, 4482, 4483, 4561, 4562, 4563, 4564, 4565, 4566, 4607, 4610, 4611,
-						  4612, 4819, 4820, 5068, 5069, 5182, 5183, 5186, 5187, 5196, 5197, 5240, 5241, 5258,
-						  5259, 5266, 5267, 5268, 5269, 5270, 5271, 5388, 5389, 5390, 5391, 5420, 5421, 5664,
-						  5750, 5751, 5756, 5757, 5758, 5759, 5762, 5763, 5764, 5765, 6290, 6291, 6292, 6293,
-						  6294, 6295, 6359, 6491, 6492, 6501, 6502, 6511, 6512, 6515, 6516, 6613, 6620, 6777,
-						  6778, 6996, 6997]
-
-	# collected from 't3'
-	hidden_faulty_list += [2864, 2898, 911, 912, 913, 914, 1519, 1520, 1521, 1522, 2865, 2866, 2867, 2868, 2869,
-							2870, 2871, 2872, 2873, 2890, 2891, 2892, 2893, 2899, 2900, 2901, 2902, 2903, 3167,
-							3404, 4258, 4259, 4260, 4261, 4262, 4263, 4264, 4265, 4294, 4295, 4296, 4297, 4314,
-							4315, 4316, 4317, 4318, 4319, 4525, 4526, 4920, 4921, 4942, 4943, 5548, 5549, 5556,
-							5557, 5558, 5559, 5560, 5561, 5564, 5565, 5566, 5567, 5628, 5629, 6077, 6078, 6083,
-							6084, 6113, 6114, 6115, 6116, 6322, 6323, 6324, 6325]
-	'''
-	if len(sql_dcts) != 7000:
-		print(len(sql_dcts))
-		raise AssertionError
-	not_skip_list = []
-	for i in range(7000):
-		if i not in skip_list and i not in hidden_faulty_list:
-			not_skip_list.append(i)
-	'''
-
-	corrected_list = [5263, 6, 5569, 6614, 4524, 6110, 5230, 6110, 5146, 1417, 5742, 4304, 2209, 521, 1793, 4764,
-					  2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243, 1522, 2865,
-					  4258, 2873]
-	#to_convert_list = corrected_list + numpy.random.choice(not_skip_list, size=(353-len(corrected_list))).tolist()
-	to_convert_list = [5263, 6, 5569, 6614, 4524, 6110, 5230, 6110, 5146, 1417, 5742, 4304, 2209, 521, 1793, 4764,
-					   2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243, 1522, 2865,
-					   4258, 2873, 2404, 4655, 1001, 5178, 2748, 5982, 1579, 4062, 384, 2459, 1914, 293, 3455, 6101,
-					   2077, 3371, 4283, 709, 3458, 1749, 2400, 1405, 5289, 1325, 2518, 3919, 753, 5872, 6936, 234,
-					   5413, 6489, 4974, 4013, 2377, 2536, 2271, 6223, 5029, 6231, 692, 3752, 2643, 2453, 711, 4559,
-					   615, 1744, 3786, 5362, 74, 3810, 6415, 1876, 2052, 3175, 2809, 557, 4580, 3813, 6606, 5096,
-					   4559, 1075, 4999, 3502, 341, 5416, 1994, 4041, 6754, 4438, 3005, 2952, 5551, 4463, 3299, 1125,
-					   6075, 1399, 2303, 38, 4510, 195, 2990, 48, 5656, 5755, 2613, 5234, 3777, 2101, 1970, 6862,
-					   1364, 5137, 2329, 324, 5593, 1554, 1900, 1152, 2430, 1516, 2662, 4798, 5383, 311, 3667, 6735,
-					   87, 5543, 4069, 1709, 5798, 4885, 1400, 6589, 6545, 6193, 1898, 2262, 387, 5198, 2246, 2608,
-					   2233, 3423, 5217, 3686, 5997, 3258, 4686, 5710, 6412, 2579, 387, 1739, 744, 6350, 4406, 5553,
-					   4591, 824, 5414, 6220, 3396, 6039, 6976, 1330, 4356, 1073, 4718, 869, 2101, 5827, 6091,
-					   3341, 5634, 2261, 4410, 6384, 1250, 4537, 4559, 1672, 6383, 3479, 5770, 3564, 5098, 6576, 6792,
-					   2215, 5806, 6990, 6307, 883, 2623, 6967, 217, 6841, 4150, 741, 2088, 4700, 3067, 3801, 6538,
-					   1713, 187, 3234, 3607, 2737, 329, 959, 2829, 2718, 6401, 3466, 1335, 497, 1595, 1425, 474,
-					   5945, 494, 1249, 3149, 4668, 4224, 3452, 6045, 432, 5428, 1921, 64, 865, 6248, 5510, 1050,
-					   5342, 1014, 1617, 3573, 5542, 928, 4987, 6663, 857, 858, 6916, 1871, 5143, 4084, 6312, 5133,
-					   5508, 2344, 5483, 6232, 1339, 767, 1873, 2858, 2938, 233, 4672, 1303, 3522, 5903, 4912, 6570,
-					   4683, 219, 60, 6356, 2926, 2036, 5454, 375, 2787, 546, 3623, 4142, 1616, 2522, 2783, 3749,
-					   5289, 1639, 6153, 3860, 1583, 1656, 2158, 6747, 2648, 449, 3563, 1121, 5790, 2762, 4440,
-					   5219, 4538, 580, 5898, 1258, 2860, 6803, 2305, 6156, 3567, 4101, 1373, 2064, 154, 3574, 2647,
-					   6268, 1209, 5299, 6887, 3652, 2305, 389, 308, 6586, 4706, 3152, 2036, 1114, 6426, 5680, 4568,
-					   309, 5710]
-
-	print('to_convert_list: ')
-	print(to_convert_list)
 	unexpressable_cnt = 0
 	unexpressable_entries = []
 	error_bucket = {}
 	res_json = []
+	proposer_json = {'src': [], 'tgt': []}
+	proposer_tsv = []
+	pseudo_tsv = []
+	simple_tsv = []
 	for _, dct in enumerate(sql_dcts[args.start_from:]):
 		dct_idx = _ + args.start_from
 		if dct_idx % 100 == 1:
 			print("turn %d begins!" % dct_idx)
-		if mode == 'random' and dct_idx not in to_convert_list:
+		if dct['db_id'] == 'wta_1':
 			continue
-
 		if dct['db_id'] != last_dbid:
 			last_dbid = dct['db_id']
 			db_num = None
@@ -535,33 +448,22 @@ def convert(file_path, mode):
 		entry_sql = dct['sql']
 		#pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps)
 
-		if 't3' in dct['query'].lower() and len(dct['sql']['from']['table_units']) <= 2 and dct_idx not in skip_list and dct_idx not in hidden_faulty_list:
-			print(dct_idx)
-			print(dct['query'])
-			print(dct['sql']['from'])
-			hidden_faulty_list.append(dct_idx)
-		#try:
-		pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
-								 finalize=True)
 		'''
+		if 't3' in dct['query'].lower() and len(dct['sql']['from']['table_units']) <= 2:
+			print("----------------------")
+			print(dct['query'])
+			print(dct_idx)
+			raise AssertionError
+		'''
+		try:
+			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
+								 finalize=True)
 		except Exception as e:
 			print("False gold SQL: %d" % dct_idx)
 			print(dct['query'])
 			print(entry_sql['from']['table_units'])
-			if dct['db_id'] == 'formula_1':
-				continue
-			if dct_idx not in skip_list:
-				skip_list.append(dct_idx)
-				continue
-			#elif dct_idx not in corrected_list:
-			#	continue
-			else:
-				continue
-			#	raise
-		'''
-		if (dct_idx in skip_list or dct_idx in hidden_faulty_list) and dct_idx not in corrected_list and mode == 'random':
-			print("!")
-			raise AssertionError
+			continue
+
 		if isinstance(pack, str):
 			print("Unexpressable_entry_occurred!")
 			print(dct['query'])
@@ -606,18 +508,47 @@ def convert(file_path, mode):
 		#	   'canonical_ce_sequence': qrynp.c_english_sequence}
 		#res_json.append(res)
 		res_json.append(qry_formatted)
-	print(len(skip_list))
-	print("hidden faulty list: ")
-	print(hidden_faulty_list)
+
+		src = copy.deepcopy(qry_formatted['question_sequence'])
+		# wash out the '$' and '#' marks
+		for src_i in range(len(src)):
+			src[src_i] = src[src_i].replace('@', '').replace('$', '').replace('\"', '')[10:]
+		proposer_json['src'].append('. '.join(src))
+		proposer_json['tgt'].append(copy.deepcopy(dct['question']))
+		proposer_tsv.append('\"'+'. '.join(src)+'\"\t\"'+copy.deepcopy(dct['question'])+'\"')
+		pseudo_tsv.append('\"'+'. '.join(src)+'\"\t\"'+'. '.join(src)+'\"')
+		if is_simple_query(qrynp):
+			simple_tsv.append('\"'+'. '.join(src)+'\"\t\"'+copy.deepcopy(dct['question'])+'\"')
+		with open('../pre-paraphrasers/data/cnnstyle/%s/%s_%d.story' % (set_split, set_split, dct_idx), 'w') as fp:
+			for line in src:
+				fp.write(line+'\n\n')
+			fp.write('@highlight\n')
+			fp.write(dct['question'])
+
+	print("len tsv: ", len(proposer_tsv))
+	print("len simple tsv: ", len(simple_tsv))
+	proposer_tsv = '\n'.join(proposer_tsv)
+	pseudo_tsv = '\n'.join(pseudo_tsv)
+	simple_tsv = '\n'.join(simple_tsv)
+	with open('../pre-paraphrasers/data/tsv/%s.tsv' % set_split, 'w') as fp:
+		fp.write(proposer_tsv)
+	with open('../pre-paraphrasers/data/pseudo_tsv/%s.tsv' % set_split, 'w') as fp:
+		fp.write(pseudo_tsv)
+	with open('../pre-paraphrasers/data/simple_tsv/%s.tsv' % set_split, 'w') as fp:
+		fp.write(simple_tsv)
 	print("unexpressable_cnt: ", unexpressable_cnt)
 	print("error bucket: ")
 	for item in error_bucket:
 		print(item, ': ', error_bucket[item])
 	print("")
-	with open('SPIDER_canonicals_%s.json' % mode, 'w') as fp:
+	assert len(proposer_json['src']) == len(proposer_json['tgt'])
+
+	with open('SPIDER_canonicals_%s_%s.json' % (mode, set_split), 'w') as fp:
 		json.dump(res_json, fp, indent=4)
-	with open('SPIDER_unexpressables_%s.json' % mode, 'w') as fp:
+	with open('SPIDER_unexpressables_%s_%s.json' % (mode, set_split), 'w') as fp:
 		json.dump(unexpressable_entries, fp, indent=4)
+	with open('../pre-paraphrasers/data/json/%s.json' % set_split, 'w') as fp:
+		json.dump(proposer_json, fp)
 	print("convertion finished!")
 
 
@@ -635,13 +566,13 @@ if __name__ == '__main__':
 	if args.mode == 'run':
 		main(idx, args.verbose)
 	elif args.mode == 'debug':
-		debug(True)
+		debug(idx, True)
 	elif args.mode == 'hit':
 		hit(idx, 10000, False)
 	elif args.mode == 'convert-all':
-		convert(args.gold_path, mode='all')
+		convert(args.gold_path, mode='all', set_split=args.split)
 	elif args.mode == 'convert-random':
-		convert(args.gold_path, mode='random')
+		convert(args.gold_path, mode='random', set_split=args.split)
 	elif args.mode == 'test_edge':
 		test_edge()
 	else:

@@ -8,42 +8,42 @@ from utils import *
 # data aggregation
 def _avg(x):
 	assert (isinstance(x, PROPERTYNP))
-	#assert (x.dtype in CALCULABLE_DTYPES)
+	# assert (x.dtype in CALCULABLE_DTYPES)
 	# the property to be averaged must be single
 	c_english = 'the average of %s' % x.c_english
 	c_chinese = '%s的平均值' % x.c_chinese
 	z = 'AVG(%s)' % x.z
-	#z4toks = 'AVG ( %s ) ' % x.z
+	# z4toks = 'AVG ( %s ) ' % x.z
 	return c_english, c_chinese, z, False
 
 
 def _min(x):
 	assert (isinstance(x, PROPERTYNP))
-	#assert (x.dtype in SUBTRACTABLE_DTYPES)
+	# assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the smallest %s' % x.c_english
 	c_chinese = '%s的最小值' % x.c_chinese
 	z = 'MIN(%s)' % x.z
-	#z4toks = 'MIN ( %s )' % x.z
+	# z4toks = 'MIN ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
 
 def _max(x):
 	assert (isinstance(x, PROPERTYNP))
-	#assert (x.dtype in SUBTRACTABLE_DTYPES)
+	# assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the largest %s' % x.c_english
 	c_chinese = '%s的最大值' % x.c_chinese
 	z = 'MAX(%s)' % x.z
-	#z4toks = 'MAX ( %s )' % x.z
+	# z4toks = 'MAX ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
 
 def _sum(x):
 	assert (isinstance(x, PROPERTYNP))
-	#assert (x.dtype in CALCULABLE_DTYPES)
+	# assert (x.dtype in CALCULABLE_DTYPES)
 	c_english = 'the sum of %s' % x.c_english
 	c_chinese = '%s的总和' % x.c_chinese
 	z = 'SUM(%s)' % x.z
-	#z4toks = 'SUM ( %s )' % x.z
+	# z4toks = 'SUM ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
 
@@ -57,7 +57,7 @@ def _uniquecount(x):
 		c_english = 'the number of different values of %s' % x.c_english
 		c_chinese = '%s不同取值的数量' % x.c_chinese
 		z = 'COUNT(distinct %s)' % x.z
-		#z4toks = 'COUNT ( distinct %s )' % x.z
+	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		distinct = False
 		if x.dtype == 'star':
@@ -67,7 +67,7 @@ def _uniquecount(x):
 			c_english = 'the number of %s' % x.c_english
 			c_chinese = '%s的数量' % x.c_chinese
 		z = 'COUNT(%s)' % x.z
-		#z4toks = 'COUNT ( %s )' % x.z
+	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
 
 
@@ -79,7 +79,7 @@ def _count_uniqueness_specified(x, distinct):
 		c_english = 'the number of different values of %s' % x.c_english
 		c_chinese = '%s不同取值的数量' % x.c_chinese
 		z = 'COUNT(distinct %s)' % x.z
-		#z4toks = 'COUNT ( distinct %s )' % x.z
+	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		if x.dtype == 'star':
 			c_english = 'the number of entries'
@@ -88,7 +88,7 @@ def _count_uniqueness_specified(x, distinct):
 			c_english = 'the number of %s' % x.c_english
 			c_chinese = '%s的数量' % x.c_chinese
 		z = 'COUNT(%s)' % x.z
-		#z4toks = 'COUNT ( %s )' % x.z
+	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
 
 
@@ -173,6 +173,9 @@ class VALUENP(BASENP):
 		self.dtype = dtype
 		if 'varchar(1000)' in self.dtype or 'datetime' in self.dtype:
 			assert isinstance(self.z, str)
+			self.c_english = self.c_english.replace('%', '')
+			self.c_chinese = self.c_chinese.replace('%', '')
+
 			if self.z[0] != '"':
 				self.z = '"' + self.z
 			if self.z[-1] != '"':
@@ -185,6 +188,16 @@ class VALUENP(BASENP):
 				self.c_chinese = '"' + self.c_chinese
 			if self.c_chinese[-1] != '"':
 				self.c_chinese = self.c_chinese + '"'
+		elif 'int' in self.dtype or 'double' in self.dtype:
+			try:
+				diff = abs(int(float(self.z)) - float(self.z))
+			except Exception as e:
+				diff = 1000	# set diff to a large number
+
+			if diff < 0.00001:
+				self.c_english = str(int(float(self.z)))
+				self.c_chinese = str(int(float(self.z)))
+				self.z = str(int(float(self.z)))
 
 	def __lt__(self, other):
 		if self.z < other.z:
@@ -432,7 +445,8 @@ class CDT(BASENP):
 			if self.left.dtype == 'star':
 				res = self.left.z + self.cmper.z.format(' ( ' + right_z + ' ) ')
 			else:
-				res = self.left.z.format(temp_tabname_bucket[self.left.table_id]) + self.cmper.z.format(' ( ' + right_z + ' ) ')
+				res = self.left.z.format(temp_tabname_bucket[self.left.table_id]) + self.cmper.z.format(
+					' ( ' + right_z + ' ) ')
 		else:
 			# in cv conditions, there might be cases where left column is star, then there need be no formatting
 			if self.left.dtype == 'star':
@@ -470,7 +484,7 @@ class QRYNP:
 				table_pos = None
 				for i, item in enumerate(self.np.table_ids):
 					if item == prop.table_id:
-						table_pos = i+1
+						table_pos = i + 1
 				if table_pos is None or start_tpos is None:
 					print("!!!")
 				table_pos += start_tpos
@@ -498,8 +512,8 @@ class QRYNP:
 				table_names.append(typenps[tabid].z)
 				temp_tabname_bucket[tabid] = ''
 			else:
-				table_names.append(typenps[tabid].z + ' as T%d ' % (no+1+start_tpos))
-				temp_tabname_bucket[tabid] = 'T%d . ' % (no+1+start_tpos)
+				table_names.append(typenps[tabid].z + ' as T%d ' % (no + 1 + start_tpos))
+				temp_tabname_bucket[tabid] = 'T%d . ' % (no + 1 + start_tpos)
 
 		z += (' ' + ' join '.join(table_names) + ' ')
 		z_toks += (' ' + ' join '.join(table_names) + ' ').split(' ')
@@ -548,7 +562,7 @@ class QRYNP:
 			for hv_idx, item in enumerate(self.np.having_cdts):
 				z += item.fetch_z(temp_tabname_bucket, typenps, propertynps, next_start_tpos)
 				z_toks += item.fetch_z(temp_tabname_bucket, typenps, propertynps, next_start_tpos).split(' ')
-				if hv_idx < len(self.np.having_cdts)-1:
+				if hv_idx < len(self.np.having_cdts) - 1:
 					z += ', '
 
 		if self.np.orderby_props is not None:
@@ -656,7 +670,7 @@ class QRYNP:
 			c_english += ' having '
 			for hv_idx, item in enumerate(self.np.having_cdts):
 				c_english += item.c_english
-				if hv_idx < len(self.np.having_cdts)-1:
+				if hv_idx < len(self.np.having_cdts) - 1:
 					c_english += ' , '
 		if self.np.group_props is not None:
 			if len(self.np.group_props) > 0:
@@ -747,6 +761,7 @@ class QRYNP:
 		elif self.np.has_intersect:
 			c_english = 'those in both ( ' + c_english + ' ) and ( ' + self.np.qrynp_2.c_english + ' )'
 
+		c_english = c_english.replace('%', '')
 		return c_english
 
 	def process_ce_step_by_step(self, typenps, propertynps, finalize=False):
@@ -810,7 +825,7 @@ class QRYNP:
 			sent_1 += ' from '
 			for mtid_idx, mtid in enumerate(self.np.main_tid):
 				sent_1 += typenps[mtid].c_english
-				if mtid_idx < len(self.np.main_tid)-1:
+				if mtid_idx < len(self.np.main_tid) - 1:
 					sent_1 += ', '
 			sent_1 += ' and their corresponding '
 			other_tids = copy.deepcopy(self.np.table_ids)
@@ -869,7 +884,7 @@ class QRYNP:
 						len(c_english), len(c_english) - 1)
 				else:
 					cur_sent = 'Result {0[%d]}: Find in addition to Result {0[%d]}, those from Result {0[%d]} satisfying ' % (
-						len(c_english), len(c_english) - 1, max(0, len(c_english)-2))
+						len(c_english), len(c_english) - 1, max(0, len(c_english) - 2))
 			cur_sent += self.np.cdts[_idx].c_english
 			if next_column_id is not None and next_column_id == self.np.cdts[_idx].left.overall_idx:
 				cur_sent += ' ' + self.np.cdt_linkers[_idx]
@@ -982,7 +997,7 @@ class QRYNP:
 					else:
 						raise AssertionError
 					orderby_sent = 'Result {0[%d]}: find Result {0[%d]} with the %s ' % (
-					len(c_english), len(c_english) - 1, _order)
+						len(c_english), len(c_english) - 1, _order)
 				else:
 					istop1 = False
 					if self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
@@ -1001,7 +1016,7 @@ class QRYNP:
 					orderby_sent += item.c_english.format('')
 					if idx + 1 < len(self.np.orderby_props):
 						if istop1:
-							if idx+2 == len(self.np.orderby_props):
+							if idx + 2 == len(self.np.orderby_props):
 								orderby_sent += ' and '
 							else:
 								orderby_sent += ', '
@@ -1037,6 +1052,9 @@ class QRYNP:
 			c_english = ' ### '.join(c_english)
 			c_english = c_english.format([i for i in range(total_len)])
 			c_english = c_english.split(' ### ')
+
+		for ce_i in range(len(c_english)):
+			c_english[ce_i] = c_english[ce_i].replace('%', '')
 
 		return c_english
 
@@ -1157,6 +1175,8 @@ class QRYNP:
 			c_chinese = '返回（' + c_chinese + '）的内容中，除去（' + self.np.qrynp_2.c_chinese + '）之外的部分'
 		elif self.np.has_intersect:
 			c_chinese = '返回同时在（' + c_chinese + '）和（' + self.np.qrynp_2.c_chinese + '）中的内容'
+
+		c_chinese = c_chinese.replace('%', '')
 		return c_chinese
 
 	def process_cc_step_by_step(self, typenps, propertynps, finalize=False):
@@ -1181,7 +1201,7 @@ class QRYNP:
 			sent_1 += '从'
 			for mtid_idx, mtid in enumerate(self.np.main_tid):
 				sent_1 += typenps[mtid].c_chinese
-				if mtid_idx < len(self.np.main_tid)-1:
+				if mtid_idx < len(self.np.main_tid) - 1:
 					sent_1 += '、'
 			sent_1 += '以及相应的'
 			other_tids = copy.deepcopy(self.np.table_ids)
@@ -1274,7 +1294,8 @@ class QRYNP:
 		_idx = 0  # the index of condition to work on
 		while _idx < len(self.np.cdts):
 			if _idx + 1 < len(self.np.cdts):
-				next_column_id = self.np.cdts[_idx + 1].left.overall_idx  # if not the last one, check the column for next cdt
+				next_column_id = self.np.cdts[
+					_idx + 1].left.overall_idx  # if not the last one, check the column for next cdt
 			else:
 				next_column_id = None
 			# allows for 'and' & 'or' linkers both present in a set of 'where' conditions (though not useful as of
@@ -1288,7 +1309,7 @@ class QRYNP:
 						len(c_chinese), len(c_chinese) - 1)
 				else:
 					cur_sent = 'Result {0[%d]}: 在Result {0[%d]}之余，找出 Result {0[%d]}中满足' % (
-						len(c_chinese), len(c_chinese) - 1, max(0, len(c_chinese)-2))
+						len(c_chinese), len(c_chinese) - 1, max(0, len(c_chinese) - 2))
 			cur_sent += self.np.cdts[_idx].c_chinese
 			if next_column_id is not None and next_column_id == self.np.cdts[_idx].left.overall_idx:
 				cur_sent += linkers_trans[self.np.cdt_linkers[_idx]]
@@ -1312,7 +1333,6 @@ class QRYNP:
 			c_chinese.append(cur_sent)
 			_idx += 1
 
-
 		# check if every selected property can be found in 'group-by' property list
 		selected_in_groupby = True
 		for prop_1 in self.np.queried_props:
@@ -1334,7 +1354,7 @@ class QRYNP:
 				groupby_sent += '满足'
 				for hv_idx, item in enumerate(self.np.having_cdts):
 					groupby_sent += item.c_chinese
-					if hv_idx+1 < len(self.np.having_cdts):
+					if hv_idx + 1 < len(self.np.having_cdts):
 						groupby_sent += '、'
 				groupby_sent += '的'
 
@@ -1344,7 +1364,6 @@ class QRYNP:
 					groupby_sent += '、'
 				elif idx + 2 == len(self.np.group_props):
 					groupby_sent += '和'
-
 
 			# if there are group-by clauses in query, specify the aggregators of queried props along with the
 			# group-by clause itself
@@ -1360,7 +1379,7 @@ class QRYNP:
 					raise AssertionError
 				for ob_idx, item in enumerate(self.np.orderby_props):
 					groupby_sent += item.c_chinese.format('')
-					if ob_idx+1 < len(self.np.orderby_props):
+					if ob_idx + 1 < len(self.np.orderby_props):
 						groupby_sent += '、'
 				groupby_sent += '的'
 				if self.np.limit != 1:
@@ -1370,7 +1389,7 @@ class QRYNP:
 				groupby_sent += '按照'
 				for ob_idx, item in enumerate(self.np.orderby_props):
 					groupby_sent += item.c_chinese.format('')
-					if ob_idx+1 < len(self.np.orderby_props):
+					if ob_idx + 1 < len(self.np.orderby_props):
 						groupby_sent += '、'
 				groupby_sent += '的'
 				if self.np.orderby_order == 'asc':
@@ -1416,7 +1435,7 @@ class QRYNP:
 				else:
 					raise AssertionError
 				orderby_sent = 'Result {0[%d]}：找出 Result {0[%d]}中' % (
-				len(c_chinese), len(c_chinese) - 1)
+					len(c_chinese), len(c_chinese) - 1)
 
 			else:
 				istop1 = False
@@ -1475,6 +1494,9 @@ class QRYNP:
 			c_chinese = c_chinese.format([i for i in range(total_len)])
 			c_chinese = c_chinese.split(' ### ')
 
+		for cc_i in range(len(c_chinese)):
+			c_chinese[cc_i] = c_chinese[cc_i].replace('%', '')
 		return c_chinese
+
 
 STAR_PROP = PROPERTYNP('everything', '全部信息', '*', 'star', overall_idx=-1, values=[], meta_idx=-1)
