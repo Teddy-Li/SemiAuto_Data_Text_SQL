@@ -2,6 +2,7 @@ from scipy.special import softmax
 import numpy
 from collections import defaultdict
 from scipy.stats import entropy
+import random
 
 ITR_TRY = 1000
 NAME_PAIR_WEIGHT = 0.3
@@ -627,3 +628,224 @@ def solve_ztok_aggr(z_toks):
 	return new_ztoks
 
 
+def sql_features(sql_struct):
+	features = []
+	# len1, len2, len3, len4, hasStar, hasMax, hasMin, hasCount, hasSum, hasAvg
+	select_feat = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	if len(sql_struct['select'][1]) == 1:
+		select_feat[0] = 1
+	elif len(sql_struct['select'][1]) == 2:
+		select_feat[1] = 1
+	elif len(sql_struct['select'][1]) == 3:
+		select_feat[2] = 1
+	elif len(sql_struct['select'][1]) > 3:
+		select_feat[3] = 1
+	else:
+		raise AssertionError
+	for item in sql_struct['select'][1]:
+		if item[1][1][1] == 0:
+			select_feat[4] = 4
+		if item[1][1][0] == 1:
+			select_feat[5] = 2
+		elif item[1][1][0] == 2:
+			select_feat[6] = 2
+		elif item[1][1][0] == 3:
+			select_feat[7] = 2
+		elif item[1][1][0] == 4:
+			select_feat[8] = 2
+		elif item[1][1][0] == 5:
+			select_feat[9] = 2
+		elif item[1][1][0] == 0:
+			pass
+		else:
+			raise AssertionError
+	features += select_feat
+
+	from_feat = [0, 0, 0, 0, 0] # len1, len2, len3, len4, join-equal-to-len_minus_1
+	if len(sql_struct['from']['table_units']) == 1:
+		from_feat[0] = 1
+	elif len(sql_struct['from']['table_units']) == 2:
+		from_feat[1] = 1
+	elif len(sql_struct['from']['table_units']) == 3:
+		from_feat[2] = 1
+	elif len(sql_struct['from']['table_units']) > 3:
+		from_feat[3] = 1
+	else:
+		raise AssertionError
+	if len(sql_struct['from']['conds']) == (len(sql_struct['from']['table_units'])-1):
+		from_feat[4] = 2
+	features += from_feat
+
+	# len0, len1, len2, len3, len4, hasStar, hasMax, hasMin, hasCount, hasSum, hasAvg, hasSubq, has_col
+	# hasBetween, hasEqual, hasLT, hasST, hasNLT, hasNST, hasNE, hasIn, hasLike
+	where_feat = [0, 0, 0, 0, 0,
+				  0, 0, 0, 0, 0, 0, 0, 0,
+				  0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+	if len(sql_struct['where']) == 0:
+		where_feat[0] = 2
+	elif len(sql_struct['where']) == 1:
+		where_feat[1] = 1
+	elif len(sql_struct['where']) == 2:
+		where_feat[2] = 1
+	elif len(sql_struct['where']) == 3:
+		where_feat[3] = 1
+	elif len(sql_struct['where']) > 3:
+		where_feat[4] = 1
+	else:
+		raise AssertionError
+
+	for item in sql_struct['where']:
+		if isinstance(item, str):
+			continue
+		if item[2][1][1] == 0:
+			where_feat[5] = 4
+		if item[2][1][0] == 0:
+			pass
+		elif item[2][1][0] == 1:
+			where_feat[6] = 1
+		elif item[2][1][0] == 2:
+			where_feat[7] = 1
+		elif item[2][1][0] == 3:
+			where_feat[8] = 1
+		elif item[2][1][0] == 4:
+			where_feat[9] = 1
+		elif item[2][1][0] == 5:
+			where_feat[10] = 1
+		else:
+			raise AssertionError
+		if isinstance(item[3], dict):
+			where_feat[11] = 4
+		elif isinstance(item[3], list):
+			where_feat[12] = 4
+
+		if item[1] == 1:
+			where_feat[13] = 1
+		elif item[1] == 2:
+			where_feat[14] = 1
+		elif item[1] == 3:
+			where_feat[15] = 1
+		elif item[1] == 4:
+			where_feat[16] = 1
+		elif item[1] == 5:
+			where_feat[17] = 1
+		elif item[1] == 6:
+			where_feat[18] = 1
+		elif item[1] == 7:
+			where_feat[19] = 1
+		elif item[1] == 8:
+			where_feat[20] = 1
+		elif item[1] == 9:
+			where_feat[21] = 1
+		else:
+			raise AssertionError
+	features += where_feat
+
+	gb_feat = [0, 0, 0, 0, 0, 0]  # len0,len1, len2, len3, has_having, having_subq
+	if len(sql_struct['groupBy']) == 0:
+		gb_feat[0] = 1
+	elif len(sql_struct['groupBy']) == 1:
+		gb_feat[1] = 1
+	elif len(sql_struct['groupBy']) == 2:
+		gb_feat[2] = 1
+	elif len(sql_struct['groupBy']) > 2:
+		gb_feat[3] = 1
+
+	if len(sql_struct['having']) > 0:
+		gb_feat[4] = 2
+	for item in sql_struct['having']:
+		if isinstance(item, str):
+			continue
+		if isinstance(item[3], dict):
+			gb_feat[5] = 2
+	features += gb_feat
+
+	ob_feat = [0, 0, 0, 0, 0, 0, 0, 0]  # len0, len1, len2, len3, asc, desc, has_limit, limit 1
+	if len(sql_struct['orderBy']) == 0:
+		ob_feat[0] = 1
+	elif len(sql_struct['orderBy'][1]) == 1:
+		ob_feat[1] = 1
+	elif len(sql_struct['orderBy'][1]) == 2:
+		ob_feat[2] = 1
+	elif len(sql_struct['orderBy'][1]) > 2:
+		ob_feat[3] = 1
+	else:
+		raise AssertionError
+	if len(sql_struct['orderBy']) > 0 and sql_struct['orderBy'][0] == 'asc':
+		ob_feat[4] = 1
+	elif len(sql_struct['orderBy']) > 0 and sql_struct['orderBy'][0] == 'desc':
+		ob_feat[5] = 1
+	else:
+		pass
+	if sql_struct['limit'] is not None:
+		ob_feat[6] = 1
+		if sql_struct['limit'] == 1:
+			ob_feat[7] = 2
+	features += ob_feat
+
+	post_feat = [0, 0, 0]  # union, except, intersect
+
+	if sql_struct['union'] is not None:
+		vec_2 = sql_features(sql_struct['union'])
+		post_feat[0] = 4
+		vec_2[0][-3] = 4
+	elif sql_struct['except'] is not None:
+		vec_2 = sql_features(sql_struct['except'])
+		post_feat[1] = 4
+		vec_2[0][-2] = 4
+	elif sql_struct['intersect'] is not None:
+		vec_2 = sql_features(sql_struct['intersect'])
+		post_feat[2] = 4
+		vec_2[0][-1] = 4
+	else:
+		vec_2 = None
+	features += post_feat
+	features = [features]
+	if vec_2 is not None:
+		features += vec_2
+	return features
+
+
+def fetch_refs(res_json, ref_json, same=False):
+	ret_json = []
+	# add references to jsons
+	for key_idx, key_dict in enumerate(res_json):
+		key_vecs = [numpy.array(v, dtype=numpy.float) for v in key_dict['sql_vec']]
+
+		# distances only contain distances within 5, if this list returns less than 10 items, use distances_backup instead
+		distances = []
+		distances_secondary = []
+		distances_backup = []
+		if key_idx % 100 == 1:
+			print(key_idx)
+		for val_idx, val_dict in enumerate(ref_json):
+			if same and val_idx == key_idx:
+				continue
+			val_vecs = [numpy.array(v, dtype=numpy.float) for v in val_dict['sql_vec']]
+			min_dist = float('inf')
+			for kv in key_vecs:
+				for vv in val_vecs:
+					cur_dist = numpy.linalg.norm(kv-vv, ord=2)
+					if cur_dist < min_dist:
+						min_dist = cur_dist
+			distances_backup.append((min_dist, val_idx))
+			if min_dist <= 1.2:
+				distances.append((min_dist, val_idx))
+			if min_dist <= 3:
+				distances_secondary.append((min_dist, val_idx))
+		# print(len(distances))
+		# use two layer cache
+		if len(distances) < 10:
+			distances = distances_secondary
+		if len(distances) < 10:
+			distances = distances_backup
+		distances = sorted(distances, key=lambda x: x[0])
+		# randomly choose one from top 3 most similar SQL queries
+		ref_idx = random.choice(distances[:10])[1]
+		ref_sequence = ref_json[ref_idx]['question_sequence']
+		ref_gold = ref_json[ref_idx]['question_gold']
+		key_dict['ref_question_sequence'] = ref_sequence
+		key_dict['ref_gold'] = ref_gold
+		ret_json.append(key_dict)
+	assert len(res_json) == len(ret_json)
+	return ret_json

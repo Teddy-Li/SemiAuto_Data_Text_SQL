@@ -16,6 +16,7 @@ parser.add_argument('-m', '--mode', type=str, default='run', help='which mode to
 parser.add_argument('-s', '--start_from', type=int, default=0, help='start_from for #convert# mode')
 parser.add_argument('-g', '--gold_path', type=str, default='./spider/spider/train_spider_corrected.json')
 parser.add_argument('-l', '--split', type=str, default='train')
+parser.add_argument('-r', '--ref_json', type=str, default='SPIDER_canonicals_all_train.json')
 args = parser.parse_args()
 
 tableid = 0
@@ -198,7 +199,7 @@ def format_query_to_spider(np, qrynp, database_name, sample, headers):
 	return qry_formatted
 
 
-def generate_queries(database_idx, verbose):
+def generate_queries(database_idx, verbose, ref_json):
 	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, valid_database, conn, crsr, num_queries = build_spider_dataset(
 		database_idx)
 	if not valid_database:
@@ -244,6 +245,11 @@ def generate_queries(database_idx, verbose):
 		if len(qry_returned) == 0:
 			should_dump = True
 		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=sample_results, headers=headers)
+		qry_vecs = sql_features(qry_formatted['sql'])
+		qry_formatted['sql_vec'] = qry_vecs
+		qry_formatted = fetch_refs([qry_formatted], ref_json)[0]
+
+
 		try:
 			sel = qry_formatted['sql']['orderBy']
 			string = json.dumps(sel)
@@ -282,12 +288,16 @@ def generate_queries(database_idx, verbose):
 	return saved_results, dumped_results, saved_gold, dumped_gold, saved_canonical, dumped_canonical
 
 
-def main(idx, verbose):
+def main(idx, verbose, ref_dir):
 	# generate queries for English
 	if idx in db_ids_to_ignore:
 		print("database number %d ignored!" % idx)
 	print("began generating query entries for database $ {0} $".format(idx))
-	res_saved, res_dumped, gold_saved, gold_dumped, canonical_saved, canonical_dumped = generate_queries(idx, verbose)
+
+	with open(ref_dir, 'r') as fp:
+		ref_json = json.load(fp)
+
+	res_saved, res_dumped, gold_saved, gold_dumped, canonical_saved, canonical_dumped = generate_queries(idx, verbose, ref_json)
 	with open(SAVE_PATH + 'gold_saved.sql', 'a') as fp:
 		for line in gold_saved:
 			fp.write(line + '\n')
@@ -503,6 +513,10 @@ def convert(file_path, mode, set_split):
 		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=sample_results, headers=headers)
 		qry_formatted['question_gold'] = dct['question']
 		qry_formatted['global_idx'] = dct_idx
+
+		qry_vecs = sql_features(qry_formatted['sql'])
+		qry_formatted['sql_vec'] = qry_vecs
+
 		#res = {'sql': dct['query'], 'query_toks': dct['query_toks'], 'query_toks_no_value': dct['query_toks_no_value'],
 		#	   'gold_question': dct['question'], 'canonical_ce': qrynp.c_english_verbose,
 		#	   'canonical_ce_sequence': qrynp.c_english_sequence}
@@ -524,6 +538,15 @@ def convert(file_path, mode, set_split):
 				fp.write(line+'\n\n')
 			fp.write('@highlight\n')
 			fp.write(dct['question'])
+
+	if set_split == 'train':
+		res_json = fetch_refs(res_json, res_json, same=True)
+	elif set_split == 'val':
+		with open('SPIDER_canonicals_all_train.json', 'r') as fp:
+			ref_json = json.load(fp)
+		res_json = fetch_refs(res_json, ref_json)
+	else:
+		raise AssertionError
 
 	print("len tsv: ", len(proposer_tsv))
 	print("len simple tsv: ", len(simple_tsv))
@@ -564,7 +587,7 @@ if __name__ == '__main__':
 	begin = time.time()
 	idx = args.db_id
 	if args.mode == 'run':
-		main(idx, args.verbose)
+		main(idx, args.verbose, args.ref_json)
 	elif args.mode == 'debug':
 		debug(idx, True)
 	elif args.mode == 'hit':
