@@ -844,8 +844,10 @@ def fetch_refs(res_json, ref_json, same=False):
 		ref_idx = random.choice(distances[:10])[1]
 		ref_sequence = ref_json[ref_idx]['question_sequence']
 		ref_gold = ref_json[ref_idx]['question_gold']
+		ref_response = ref_json[ref_idx]['answer_sample']
 		key_dict['ref_question_sequence'] = ref_sequence
 		key_dict['ref_gold'] = ref_gold
+		key_dict['ref_response'] = ref_response
 		ret_json.append(key_dict)
 	assert len(res_json) == len(ret_json)
 	return ret_json

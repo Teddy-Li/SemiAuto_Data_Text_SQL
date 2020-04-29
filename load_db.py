@@ -116,7 +116,7 @@ def build_spider_dataset(num):
 			typenps.append(new_typenp)
 			typenps[meta['column_names'][pair[0]][0]].clones.append(new_typenp.overall_idx)
 
-	# here they're both directioned
+	# here they're both directed
 	fk_type_matrix = [[0] * len(typenps) for i in range(len(typenps))]
 	fk_property_matrix = [[0] * len(propertynps) for i in range(len(propertynps))]
 

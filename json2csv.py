@@ -5,7 +5,8 @@ import random
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dark', type=bool, default=False)
-parser.add_argument('-p', '--pilot', type=bool, default=False)
+parser.add_argument('-p', '--pilot', type=bool, default=False, help="whether this is for a pilot experiment; if so, "
+																	"50 entries will be sampled out of all entries")
 parser.add_argument('-r', '--run', type=bool, default=False)
 parser.add_argument('-i', '--input', type=str, default='')
 parser.add_argument('-o', '--output', type=str, default='')
@@ -31,7 +32,7 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 		file = random.sample(file, k=50)
 
 	with open(out_path, 'w') as fp:
-		fp.write('topic,sequence,ref_sequence,ref_gold,answer,qryidx\n')
+		fp.write('topic,sequence,gold,ref_sequence,ref_gold,answer,ref_answer,qryidx\n')
 		for entry in file:
 			dbname = entry['db_id'].split('_')
 			n_dbname = []
@@ -76,8 +77,19 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			ref_sequence = ref_sequence.replace('\"', '')
 			ref_sequence = '\"'+ref_sequence+'\"'
 
-			ref_gold = entry['ref_question_gold']
+			ref_gold = entry['ref_gold']
 			ref_gold = '\"' + ref_gold + '\"'
+
+			entry['ref_response'][0] = entry['ref_response'][0].replace('*', 'Everything')
+			ref_response = '<table border=2> <tr> '
+			for item in entry['ref_response'][0].split(','):
+				ref_response += ' <th> '+item.strip().strip('"')+' </th> '
+			ref_response += '</tr> <tr> '
+			for line in entry['ref_response'][1:]:
+				for item in line.split(','):
+					ref_response += ' <th> ' + item.strip().strip('"')+' </th> '
+			ref_response += ' </tr> </table>'
+			ref_response = '\"' + ref_response + '\"'
 
 			sequence = []
 			for item in entry['question_sequence']:
@@ -114,14 +126,23 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			sequence = sequence.replace('\"', '')
 			sequence = '\"'+sequence+'\"'
 
+			gold = entry['question_gold']
+			gold = '\"' + gold + '\"'
+
 			entry['answer_sample'][0] = entry['answer_sample'][0].replace('*', 'Everything')
-			answer = ' <br> '.join(entry['answer_sample'])
-			answer = answer.replace('\"', '')
-			answer = '\"'+answer+'\"'
+			answer_sample = '<table border=2> <tr> '
+			for item in entry['answer_sample'][0].split(','):
+				answer_sample += ' <th> ' + item.strip().strip('"') + ' </th> '
+			answer_sample += '</tr> <tr> '
+			for line in entry['answer_sample'][1:]:
+				for item in line.split(','):
+					answer_sample += ' <th> ' + item.strip().strip('"') + ' </th> '
+			answer_sample += ' </tr> </table>'
+			answer_sample = '\"' + answer_sample + '\"'
 
 			qry_idx = entry['global_idx']
 			qry_idx = '\"'+str(qry_idx)+'\"'
 
-			res = [topic, sequence, ref_sequence, ref_gold, answer, qry_idx]
+			res = [topic, sequence, gold, ref_sequence, ref_gold, answer_sample, ref_response, qry_idx]
 			fp.write(','.join(res)+'\n')
 
