@@ -811,7 +811,7 @@ def sql_features(sql_struct):
 	return features
 
 
-def fetch_refs(res_json, ref_json, same=False):
+def fetch_refs(res_json, ref_json, lang, same=False):
 	ret_json = []
 	# add references to jsons
 	for key_idx, key_dict in enumerate(res_json):
@@ -847,7 +847,12 @@ def fetch_refs(res_json, ref_json, same=False):
 		distances = sorted(distances, key=lambda x: x[0])
 		# randomly choose one from top 3 most similar SQL queries
 		ref_idx = random.choice(distances[:10])[1]
-		ref_sequence = ref_json[ref_idx]['question_sequence']
+		if lang == 'eng':
+			ref_sequence = ref_json[ref_idx]['question_sequence']
+		elif lang == 'chi':
+			ref_sequence = ref_json[ref_idx]['question_sequence_chinese']
+		else:
+			raise AssertionError
 		ref_gold = ref_json[ref_idx]['question_gold']
 		ref_response = ref_json[ref_idx]['answer_sample']
 		key_dict['ref_question_sequence'] = ref_sequence

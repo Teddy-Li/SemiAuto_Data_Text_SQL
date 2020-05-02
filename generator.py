@@ -18,6 +18,7 @@ parser.add_argument('-g', '--gold_path', type=str, default='./spider/spider/trai
 parser.add_argument('-l', '--split', type=str, default='train')
 parser.add_argument('-r', '--ref_json', type=str, default='SPIDER_canonicals_all_train.json')
 parser.add_argument('-o', '--out_dir', type=str, default='./spider_converted', help='output directory for "convert"')
+parser.add_argument('--lang', type=str, default='eng')
 args = parser.parse_args()
 
 tableid = 0
@@ -417,7 +418,7 @@ def hit(db_idx, max_iter, verbose):
 	fp.close()
 
 
-def convert(file_path, mode, set_split):
+def convert(file_path, mode, set_split, lang):
 	assert mode in ['all', 'random']
 	with open(TABLE_METADATA_PATH, 'r') as fp:
 		meta_data = json.load(fp)
@@ -530,7 +531,12 @@ def convert(file_path, mode, set_split):
 		#res_json.append(res)
 		res_json.append(qry_formatted)
 
-		src = copy.deepcopy(qry_formatted['question_sequence'])
+		if lang == 'eng':
+			src = copy.deepcopy(qry_formatted['question_sequence'])
+		elif lang == 'chi':
+			src = copy.deepcopy(qry_formatted['question_sequence_chinese'])
+		else:
+			raise AssertionError
 		# wash out the '$' and '#' marks
 		for src_i in range(len(src)):
 			src[src_i] = src[src_i].replace('@', '').replace('$', '').replace('\"', '')[10:]
@@ -549,11 +555,11 @@ def convert(file_path, mode, set_split):
 		'''
 
 	if set_split == 'train':
-		res_json = fetch_refs(res_json, res_json, same=True)
+		res_json = fetch_refs(res_json, res_json, lang=lang, same=True)
 	elif set_split == 'val':
 		with open(args.ref_json, 'r') as fp:
 			ref_json = json.load(fp)
-		res_json = fetch_refs(res_json, ref_json)
+		res_json = fetch_refs(res_json, ref_json, lang=lang)
 	else:
 		raise AssertionError
 
@@ -604,9 +610,9 @@ if __name__ == '__main__':
 	elif args.mode == 'hit':
 		hit(idx, 10000, False)
 	elif args.mode == 'convert-all':
-		convert(args.gold_path, mode='all', set_split=args.split)
+		convert(args.gold_path, mode='all', set_split=args.split, lang=args.lang)
 	elif args.mode == 'convert-random':
-		convert(args.gold_path, mode='random', set_split=args.split)
+		convert(args.gold_path, mode='random', set_split=args.split, leng=args.lang)
 	elif args.mode == 'test_edge':
 		test_edge()
 	else:

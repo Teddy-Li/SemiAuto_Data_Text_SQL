@@ -10,6 +10,7 @@ parser.add_argument('-p', '--pilot', type=bool, default=False, help="whether thi
 parser.add_argument('-r', '--run', type=bool, default=False)
 parser.add_argument('-i', '--input', type=str, default='')
 parser.add_argument('-o', '--output', type=str, default='')
+parser.add_argument('-l', '--lang', type=str, default='eng')
 
 args = parser.parse_args()
 if args.dark:
@@ -94,6 +95,13 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			ref_response = '\"' + ref_response + '\"'
 
 			sequence = []
+			if args.lang == 'eng':
+				question_sequence = entry['question_sequence']
+			elif args.lang == 'chi':
+				question_sequence = entry['question_sequence_chinese']
+			else:
+				raise AssertionError
+
 			for item in entry['question_sequence']:
 				q = []
 				item = item.split()
