@@ -5,8 +5,9 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--mode', type=str, default='skip')
-parser.add_argument('-f', '--input_filename', type=str, default='train_spider.json')
-parser.add_argument('-o', '--out', type=str, default='train_spider_corrected.json')
+parser.add_argument('-f', '--input_fp', type=str, default='./CSpider/train.json')
+parser.add_argument('-o', '--out', type=str, default='./CSpider/train_corrected.json')
+parser.add_argument('-t', '--table_fp', type=str, default='./CSpider/tables_mod.json')
 
 
 def get_from_info(table_dct, meta):
@@ -132,7 +133,7 @@ def main(args):
 					  2176, 2383, 4697, 1417, 437, 5240, 3317, 3315, 2038, 1037, 5183, 423, 5259, 3243, 1522, 2865,
 					  4258, 2873])
 	elif args.mode == 'fromc':
-		chosen = np.array([1792, 1793, 1794, 1795, 3125, 3126, 5158, 5159, 5756, 5757, 6955])
+		chosen = np.array([1792, 1793, 1794, 1795, 3125, 3126, 5158, 5159, 6955])
 	elif args.mode == 'dev':
 		chosen = np.array([900, 901])
 	else:
@@ -142,10 +143,10 @@ def main(args):
 	print("chosen size: ", len(chosen))
 	print("")
 
-	with open('./spider/spider/%s' % args.input_filename, 'r') as fp:
+	with open(args.input_fp, 'r') as fp:
 		train_data = json.load(fp)
 
-	with open('./spider/spider/tables_mod.json', 'r') as fp:
+	with open(args.table_fp, 'r') as fp:
 		table_meta = json.load(fp)
 
 	res = []
@@ -241,7 +242,7 @@ def main(args):
 
 	assert len(res) == len(train_data)
 
-	with open('./spider/spider/%s' % args.out, 'w') as fp:
+	with open(args.out, 'w') as fp:
 		json.dump(res, fp, indent=4)
 	'''
 	with open('./spider/spider/train_spider_reminder.json', 'w') as fp:

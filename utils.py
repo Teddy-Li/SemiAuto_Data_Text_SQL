@@ -11,10 +11,15 @@ MAX_RETURN_ENTRIES = 1000
 
 db_ids_to_ignore = [124, 131]
 
+'''
 DATABASE_PATH = './spider/spider/database'
 TABLE_METADATA_PATH = './spider/spider/tables_mod.json'
-SAVE_PATH = './saved_results/'
+SAVE_PATH = './saved_results_spider/'
+'''
 
+DATABASE_PATH = './CSpider/database'
+TABLE_METADATA_PATH = './CSpider/tables_mod.json'
+SAVE_PATH = './saved_results_CSpider'
 
 def transform2distribution_proportional(scores):
 	# strip the negative values to zero (the negative values were there in the first hand

@@ -1187,7 +1187,6 @@ class QRYNP:
 		for idx, prop in enumerate(self.np.queried_props):
 			# if it is a '*' column
 			if isinstance(prop.table_id, list):
-				sent_1 += prop.c_chinese
 				if prop.aggr != 3:
 					need_from_even_single = True
 

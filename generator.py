@@ -1,5 +1,5 @@
 
-#-*- coding: latin_1 -*-
+#-*- coding: utf-8 -*-
 
 
 import time
@@ -17,6 +17,7 @@ parser.add_argument('-s', '--start_from', type=int, default=0, help='start_from 
 parser.add_argument('-g', '--gold_path', type=str, default='./spider/spider/train_spider_corrected.json')
 parser.add_argument('-l', '--split', type=str, default='train')
 parser.add_argument('-r', '--ref_json', type=str, default='SPIDER_canonicals_all_train.json')
+parser.add_argument('-o', '--out_dir', type=str, default='./spider_converted', help='output directory for "convert"')
 args = parser.parse_args()
 
 tableid = 0
@@ -489,13 +490,19 @@ def convert(file_path, mode, set_split):
 		#	continue
 		else:
 			np, qrynp = pack
-		for line in qrynp.c_english_sequence:
+
+		# for line in qrynp.c_english_sequence:
+		# 	print(line)
+		for line in qrynp.c_chinese_sequence:
 			print(line)
 		print("Gold: "+dct['question'])
 		print("")
 		print(dct['query'])
 		print(qrynp.z)
 		print("")
+
+		# if len(qrynp.c_chinese_sequence) > 2:
+		# 	print("!")
 
 		try:
 			qry_returned = crsr.execute(qrynp.z).fetchall()
@@ -533,16 +540,18 @@ def convert(file_path, mode, set_split):
 		pseudo_tsv.append('\"'+'. '.join(src)+'\"\t\"'+'. '.join(src)+'\"')
 		if is_simple_query(qrynp):
 			simple_tsv.append('\"'+'. '.join(src)+'\"\t\"'+copy.deepcopy(dct['question'])+'\"')
+		'''
 		with open('../pre-paraphrasers/data/cnnstyle/%s/%s_%d.story' % (set_split, set_split, dct_idx), 'w') as fp:
 			for line in src:
 				fp.write(line+'\n\n')
 			fp.write('@highlight\n')
 			fp.write(dct['question'])
+		'''
 
 	if set_split == 'train':
 		res_json = fetch_refs(res_json, res_json, same=True)
 	elif set_split == 'val':
-		with open('SPIDER_canonicals_all_train.json', 'r') as fp:
+		with open(args.ref_json, 'r') as fp:
 			ref_json = json.load(fp)
 		res_json = fetch_refs(res_json, ref_json)
 	else:
@@ -553,12 +562,16 @@ def convert(file_path, mode, set_split):
 	proposer_tsv = '\n'.join(proposer_tsv)
 	pseudo_tsv = '\n'.join(pseudo_tsv)
 	simple_tsv = '\n'.join(simple_tsv)
+	'''
 	with open('../pre-paraphrasers/data/tsv/%s.tsv' % set_split, 'w') as fp:
 		fp.write(proposer_tsv)
 	with open('../pre-paraphrasers/data/pseudo_tsv/%s.tsv' % set_split, 'w') as fp:
 		fp.write(pseudo_tsv)
 	with open('../pre-paraphrasers/data/simple_tsv/%s.tsv' % set_split, 'w') as fp:
 		fp.write(simple_tsv)
+	with open('../pre-paraphrasers/data/json/%s.json' % set_split, 'w') as fp:
+		json.dump(proposer_json, fp)
+	'''
 	print("unexpressable_cnt: ", unexpressable_cnt)
 	print("error bucket: ")
 	for item in error_bucket:
@@ -566,12 +579,10 @@ def convert(file_path, mode, set_split):
 	print("")
 	assert len(proposer_json['src']) == len(proposer_json['tgt'])
 
-	with open('SPIDER_canonicals_%s_%s.json' % (mode, set_split), 'w') as fp:
-		json.dump(res_json, fp, indent=4)
-	with open('SPIDER_unexpressables_%s_%s.json' % (mode, set_split), 'w') as fp:
-		json.dump(unexpressable_entries, fp, indent=4)
-	with open('../pre-paraphrasers/data/json/%s.json' % set_split, 'w') as fp:
-		json.dump(proposer_json, fp)
+	with open(os.path.join(args.out_dir, 'canonicals_%s_%s.json'%(mode, set_split)), 'w', encoding='utf-8') as fp:
+		json.dump(res_json, fp, ensure_ascii=False, indent=4)
+	with open(os.path.join(args.out_dir, 'unexpressables_%s_%s.json'%(mode, set_split)), 'w', encoding='utf-8') as fp:
+		json.dump(unexpressable_entries, fp, ensure_ascii=False, indent=4)
 	print("convertion finished!")
 
 

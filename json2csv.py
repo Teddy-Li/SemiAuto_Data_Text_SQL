@@ -23,15 +23,17 @@ elif len(args.input) > 0:
 	assert len(args.output) > 0
 	PATHS = [args.input]
 	OUT_PATHS = [args.output]
+else:
+	raise AssertionError
 
 for path, out_path in zip(PATHS, OUT_PATHS):
-	with open(path, 'r') as fp:
+	with open(path, 'r', encoding='utf-8') as fp:
 		file = json.load(fp)
 
 	if args.pilot:
 		file = random.sample(file, k=50)
 
-	with open(out_path, 'w') as fp:
+	with open(out_path, 'w', encoding='utf-8') as fp:
 		fp.write('topic,sequence,gold,ref_sequence,ref_gold,answer,ref_answer,qryidx\n')
 		for entry in file:
 			dbname = entry['db_id'].split('_')
