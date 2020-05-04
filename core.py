@@ -45,10 +45,12 @@ def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_ps
 	relevant_prop_rels = []
 	for idx, rel in enumerate(prop_rels):
 		# allow only those relations whose types are both used in query
+		# only allow edges from new tid to current tables.
 		if rel.table_ids[0] in table_ids and rel.table_ids[1] == new_tid:
 			relevant_prop_rels.append(rel)
-		elif rel.table_ids[0] == new_tid and rel.table_ids[1] in table_ids:
-			relevant_prop_rels.append(rel)
+
+	#elif rel.table_ids[0] == new_tid and rel.table_ids[1] in table_ids:
+	#		relevant_prop_rels.append(rel)
 	# if there are actual relations
 	if len(relevant_prop_rels) > 0:
 		scores = []
@@ -85,8 +87,6 @@ def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_ps
 	c_chinese = propertynps[fetched_rel.prop_ids[0]].c_chinese.format(
 		typenps[fetched_rel.table_ids[0]].c_chinese + '的') + cmper.c_chinese.format(
 		propertynps[fetched_rel.prop_ids[1]].c_chinese.format(typenps[fetched_rel.table_ids[1]].c_chinese + '的'))
-	c_english_half = cmper.c_english.format(
-		propertynps[fetched_rel.prop_ids[1]].c_english.format(typenps[fetched_rel.table_ids[1]].c_english + '\'s '))
 
 	z = propertynps[fetched_rel.prop_ids[0]].z + cmper.z.format(propertynps[fetched_rel.prop_ids[1]].z)
 	left = copy.deepcopy(propertynps[fetched_rel.prop_ids[0]])
@@ -677,7 +677,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
 				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
-				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tid=main_tid)
+				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tids=main_tid)
 	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize)
 	return final_np, final_qrynp
 
@@ -696,7 +696,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		print("scratch_build_began")
 	# about tables to join
 	join_cdts = []
-	prior_importance = calc_importance(type_mat, [])
+	prior_importance = calc_importance(typenps, type_mat, fk_rels, [])
 	for tid in range(len(typenps)):
 		if typenps[tid].valid is False:
 			prior_importance[tid] = -10000
@@ -707,6 +707,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 	# according to settled tables.
 	table_distribution = transform2distribution(numpy.array(prior_importance, dtype=numpy.float))
 	if specific_props is None:
+		# pick the initial table from prior distribution
 		table_ids = [numpy.random.choice(numpy.arange(len(typenps)), p=table_distribution)]
 	else:
 		table_ids = []
@@ -728,7 +729,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 	initial_length = len(table_ids)
 	for _ in range(initial_length, num_tables):
 		allow_pseudo_rels = False
-		table_importance = calc_importance(type_mat, table_ids, prior_importance)
+		table_importance = calc_importance(typenps, type_mat, fk_rels, table_ids, prior_importance)
 		for tid in range(len(typenps)):
 			if typenps[tid].valid is False:
 				prior_importance[tid] = -10000
@@ -828,7 +829,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])], orderby_order='asc',
-				limit=MAX_RETURN_ENTRIES)
+				limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 	prev_res = cursor.execute(cur_qrynp.z).fetchall()
 	ci_occured_flag = False
@@ -884,7 +885,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 					cdts=where_cdts, cdt_linkers=where_linkers,
 					orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
-					orderby_order='asc', limit=MAX_RETURN_ENTRIES)
+					orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 
 		res = cursor.execute(cur_qrynp.z).fetchall()
@@ -966,7 +967,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			_prop.set_aggr(3)
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props + [copy.deepcopy(propertynps[idx])], having_cdts=None)
+						group_props=groupby_props + [copy.deepcopy(propertynps[idx])], having_cdts=None, main_tids=main_tid)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			all_one = True
@@ -1026,12 +1027,12 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			_prop.set_aggr(3)
 			prev_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						 cdts=where_cdts, cdt_linkers=where_linkers,
-						 group_props=groupby_props)
+						 group_props=groupby_props, main_tids=main_tid)
 			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps)
 			prev_res = cursor.execute(prev_qrynp.z).fetchall()
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props, having_cdts=having_cdts)
+						group_props=groupby_props, having_cdts=having_cdts, main_tids=main_tid)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			if len(res) == 0 or len(res) == len(prev_res):
@@ -1130,7 +1131,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 							cdts=where_cdts, cdt_linkers=where_linkers,
 							group_props=groupby_props, having_cdts=having_cdts,
 							orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
-							orderby_order='asc', limit=MAX_RETURN_ENTRIES)
+							orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
 				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 				res = cursor.execute(cur_qrynp.z).fetchall()
 				if len(res) > 1 or rho < 0.05:
@@ -1180,7 +1181,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				cdts=where_cdts, cdt_linkers=where_linkers,
 				group_props=groupby_props, having_cdts=having_cdts,
 				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
-				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
+				orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
 	res = cursor.execute(cur_qrynp.z).fetchall()
 	if len(res) <= 1:
@@ -1244,7 +1245,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 				cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
 				having_cdts=having_cdts, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
-				orderby_order='asc', limit=MAX_RETURN_ENTRIES)
+				orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
 	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	res = cursor.execute(cur_qrynp.z).fetchall()
 	if len(res) == 1000:
@@ -1373,7 +1374,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 
 			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
-						having_cdts=having_cdts)
+						having_cdts=having_cdts, main_tids=main_tid)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			len_res_prime = max(len(res), 1)
@@ -1402,7 +1403,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		if flag:
 			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
-						orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
+						orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, main_tids=main_tid)
 			rho = random.random()
 			if rho < 0.1:
 				# here because the assigned properties might not be compatible with group-by clauses or such, it might not
@@ -1425,7 +1426,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		assert qrynp_2 is not None
 		cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
-					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit)
+					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, main_tids=main_tid)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 		res_1 = cursor.execute(cur_qrynp.z).fetchall()
 		res_2 = cursor.execute(qrynp_2.z).fetchall()
@@ -1442,7 +1443,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 	inspect_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
-					has_union=has_union, has_except=has_except, has_intersect=has_intersect)
+					has_union=has_union, has_except=has_except, has_intersect=has_intersect, main_tids=main_tid)
 	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	res = cursor.execute(inspect_qrynp.z).fetchall()
 	if len(res) > 200:
@@ -1457,13 +1458,13 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 	else:
 		distinct = False
 
-	if not join_simplifiable:
+	if not join_simplifiable and len(table_ids) > 1:
 		main_tid = []
 	final_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 				  cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 				  orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 				  has_union=has_union, has_except=has_except, has_intersect=has_intersect, distinct=distinct,
-				  main_tid=main_tid)
+				  main_tids=main_tid)
 	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
 	if print_verbose:
 		print("ALL SET!")

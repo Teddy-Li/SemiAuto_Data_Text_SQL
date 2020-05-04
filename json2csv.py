@@ -3,6 +3,69 @@ import os
 import argparse
 import random
 
+
+def parse_colors_english(item):
+	q = []
+	item = item.split()
+	for w in item:
+		tocsv_w = None
+		if w[0] == '@':
+			tocsv_w = '<font color=red>' + w[1:]
+			if tocsv_w.count('@') > 1 or tocsv_w.count('$') > 0:
+				print(item)
+				print(tocsv_w)
+				raise AssertionError
+			tocsv_w = tocsv_w.replace('@', '</font>')
+		elif w[0] == '$':
+			tocsv_w = '<font color=blue>' + w[1:]
+			if tocsv_w.count('@') > 0 or tocsv_w.count('$') > 1:
+				print(item)
+				print(tocsv_w)
+				raise AssertionError
+			tocsv_w = tocsv_w.replace('$', '</font>')
+		else:
+			tocsv_w = w
+			if tocsv_w.count('@') > 1 or tocsv_w.count('$') > 1:
+				print(item)
+				print(tocsv_w)
+				raise AssertionError
+			tocsv_w = tocsv_w.replace('@', '</font>')
+			tocsv_w = tocsv_w.replace('$', '</font>')
+		q.append(tocsv_w)
+	q = ' '.join(q)
+	return q
+
+
+def parse_colors_chinese(item):
+	q = ''
+	t_start = None  # start index of ongoing table name
+	c_start = None  # start index of ongoing column name
+	for c_idx, c in enumerate(item):
+		if c == '@':
+			if c_start is not None:
+				print(item)
+				raise AssertionError
+			if t_start is None:
+				t_start = c_idx
+				q += '<font color=red>'
+			else:
+				t_start = None
+				q += '</font>'
+		elif c == '$':
+			if t_start is not None:
+				print(item)
+				raise AssertionError
+			if c_start is None:  # if is the start of a column
+				c_start = c_idx
+				q += '<font color=blue>'
+			else:
+				c_start = None
+				q += '</font>'
+		else:
+			q += c
+	return q
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dark', type=bool, default=False)
 parser.add_argument('-p', '--pilot', type=bool, default=False, help="whether this is for a pilot experiment; if so, "
@@ -47,34 +110,12 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 
 			ref_sequence = []
 			for item in entry['ref_question_sequence']:
-				q = []
-				item = item.split()
-				for w in item:
-					tocsv_w = None
-					if w[0] == '@':
-						tocsv_w = '<font color=red>'+w[1:]
-						if tocsv_w.count('@') > 1 or tocsv_w.count('$') > 0:
-							print(item)
-							print(tocsv_w)
-							raise AssertionError
-						tocsv_w = tocsv_w.replace('@', '</font>')
-					elif w[0] == '$':
-						tocsv_w = '<font color=blue>'+w[1:]
-						if tocsv_w.count('@') > 0 or tocsv_w.count('$') > 1:
-							print(item)
-							print(tocsv_w)
-							raise AssertionError
-						tocsv_w = tocsv_w.replace('$', '</font>')
-					else:
-						tocsv_w = w
-						if tocsv_w.count('@') > 1 or tocsv_w.count('$') > 1:
-							print(item)
-							print(tocsv_w)
-							raise AssertionError
-						tocsv_w = tocsv_w.replace('@', '</font>')
-						tocsv_w = tocsv_w.replace('$', '</font>')
-					q.append(tocsv_w)
-				q = ' '.join(q)
+				if args.lang == 'eng':
+					q = parse_colors_english(item)
+				elif args.lang == 'chi':
+					q = parse_colors_chinese(item)
+				else:
+					raise AssertionError
 				ref_sequence.append(q)
 			ref_sequence = ' <br> '.join(ref_sequence)
 			ref_sequence = ref_sequence.replace('\"', '')
@@ -102,35 +143,13 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			else:
 				raise AssertionError
 
-			for item in entry['question_sequence']:
-				q = []
-				item = item.split()
-				for w in item:
-					tocsv_w = None
-					if w[0] == '@':
-						tocsv_w = '<font color=red>'+w[1:]
-						if tocsv_w.count('@') > 1 or tocsv_w.count('$') > 0:
-							print(item)
-							print(tocsv_w)
-							raise AssertionError
-						tocsv_w = tocsv_w.replace('@', '</font>')
-					elif w[0] == '$':
-						tocsv_w = '<font color=blue>'+w[1:]
-						if tocsv_w.count('@') > 0 or tocsv_w.count('$') > 1:
-							print(item)
-							print(tocsv_w)
-							raise AssertionError
-						tocsv_w = tocsv_w.replace('$', '</font>')
-					else:
-						tocsv_w = w
-						if tocsv_w.count('@') > 1 or tocsv_w.count('$') > 1:
-							print(item)
-							print(tocsv_w)
-							raise AssertionError
-						tocsv_w = tocsv_w.replace('@', '</font>')
-						tocsv_w = tocsv_w.replace('$', '</font>')
-					q.append(tocsv_w)
-				q = ' '.join(q)
+			for item in question_sequence:
+				if args.lang == 'eng':
+					q = parse_colors_english(item)
+				elif args.lang == 'chi':
+					q = parse_colors_chinese(item)
+				else:
+					raise AssertionError
 				sequence.append(q)
 			sequence = ' <br> '.join(sequence)
 			sequence = sequence.replace('\"', '')

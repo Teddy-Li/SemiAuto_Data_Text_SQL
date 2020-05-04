@@ -8,6 +8,7 @@ ITR_TRY = 1000
 NAME_PAIR_WEIGHT = 0.3
 MAX_VALUE_ENTRIES = 500
 MAX_RETURN_ENTRIES = 1000
+PAGERANK_QUIT_EPOCH = 20
 
 db_ids_to_ignore = [124, 131]
 
@@ -39,7 +40,7 @@ def transform2distribution_proportional(scores):
 
 transform2distribution = transform2distribution_proportional
 
-PAGERANK_CRITICAL_VALUE = 0.0000000001
+PAGERANK_CRITICAL_VALUE = 0.000001
 PAGERANK_QVALUE = 0.2  # a baseline score with which probability the traverse jumps to a random node
 
 CALCULABLE_DTYPES = ['int', 'double']
@@ -160,12 +161,15 @@ def is_comparable(str1, str2):
 		return False
 
 
-def pagerank_scores(matrix):
+def pagerank_scores(matrix, typenps):
+	assert len(typenps) == matrix.shape[0]
 	matrix = numpy.matrix(matrix)
 	assert (matrix.ndim == 2)
 	assert (matrix.shape[0] == matrix.shape[1])
-	last_scores = [1] * matrix.shape[0]
+	last_scores = [len(tp.properties) for tp in typenps]
+	last_scores = [x*len(last_scores)/sum(last_scores) for x in last_scores]  # normalize average to 1
 	weightsums = matrix.sum(axis=1, dtype='float').flatten()
+	_iter = 0
 	while True:
 		scores = [PAGERANK_QVALUE] * matrix.shape[0]
 		for i in range(matrix.shape[0]):
@@ -181,26 +185,33 @@ def pagerank_scores(matrix):
 			if abs(a - b) > PAGERANK_CRITICAL_VALUE:
 				stable = False
 				break
-		if stable:
+		if stable or _iter > PAGERANK_QUIT_EPOCH:
+			if _iter > PAGERANK_QUIT_EPOCH:
+				print("!")
 			break
 		else:
 			last_scores = scores
+			_iter += 1
 	return last_scores
 
 
 # table_ids means the previous tables already selected into this query
-def calc_importance(type_mat, table_ids, prior_scores=None):
+def calc_importance(typenps, type_mat, fk_rels, table_ids, prior_scores=None):
 	if len(table_ids) == 0:
-		scores = pagerank_scores(type_mat)
+		fk_reverse_weight_mat = numpy.zeros_like(type_mat)
+		for rel in fk_rels:
+			fk_reverse_weight_mat[rel.table_ids[0], rel.table_ids[1]] += 0.3
+		pr_mat = type_mat + fk_reverse_weight_mat
+		scores = pagerank_scores(pr_mat, typenps)
 	else:
 		assert (prior_scores is not None)
 		scores = [0] * type_mat.shape[0]
-		in_and_out = type_mat + type_mat.T
-		# for each existing table in query, add its influence matrix (in_and_out)
+		# for each existing table in query, add its influence matrix
 		# adjusted with its own prior importance to the scoring of next table
-		for idx_1 in range(len(type_mat)):
-			for idx_2 in table_ids:
-				scores[idx_1] += in_and_out[idx_1, idx_2] * prior_scores[idx_2]
+		for idx_1 in table_ids:
+			for idx_2 in range(len(type_mat)):
+				# the direction of type-mat is pk -> fk
+				scores[idx_2] += type_mat[idx_2, idx_1] * prior_scores[idx_1]
 	return scores
 
 
@@ -830,7 +841,8 @@ def fetch_refs(res_json, ref_json, lang, same=False):
 			min_dist = float('inf')
 			for kv in key_vecs:
 				for vv in val_vecs:
-					cur_dist = numpy.linalg.norm(kv-vv, ord=2)
+					# use norm-1 instead of norm-2 to avoid assigning to much credit to larger weighted features
+					cur_dist = numpy.linalg.norm(kv-vv, ord=1)
 					if cur_dist < min_dist:
 						min_dist = cur_dist
 			distances_backup.append((min_dist, val_idx))

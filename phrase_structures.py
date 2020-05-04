@@ -11,7 +11,7 @@ def _avg(x):
 	# the property to be averaged must be single
 	c_english = 'the average of %s' % x.c_english
 	c_chinese = '%s的平均值' % x.c_chinese
-	z = 'AVG(%s)' % x.z
+	z = ' AVG(%s) ' % x.z
 	# z4toks = 'AVG ( %s ) ' % x.z
 	return c_english, c_chinese, z, False
 
@@ -21,7 +21,7 @@ def _min(x):
 	# assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the smallest %s' % x.c_english
 	c_chinese = '%s的最小值' % x.c_chinese
-	z = 'MIN(%s)' % x.z
+	z = ' MIN(%s) ' % x.z
 	# z4toks = 'MIN ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
@@ -31,7 +31,7 @@ def _max(x):
 	# assert (x.dtype in SUBTRACTABLE_DTYPES)
 	c_english = 'the largest %s' % x.c_english
 	c_chinese = '%s的最大值' % x.c_chinese
-	z = 'MAX(%s)' % x.z
+	z = ' MAX(%s) ' % x.z
 	# z4toks = 'MAX ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
@@ -41,7 +41,7 @@ def _sum(x):
 	# assert (x.dtype in CALCULABLE_DTYPES)
 	c_english = 'the sum of %s' % x.c_english
 	c_chinese = '%s的总和' % x.c_chinese
-	z = 'SUM(%s)' % x.z
+	z = ' SUM(%s) ' % x.z
 	# z4toks = 'SUM ( %s )' % x.z
 	return c_english, c_chinese, z, False
 
@@ -55,7 +55,7 @@ def _uniquecount(x):
 		distinct = True
 		c_english = 'the number of different values of %s' % x.c_english
 		c_chinese = '%s不同取值的数量' % x.c_chinese
-		z = 'COUNT(distinct %s)' % x.z
+		z = ' COUNT(distinct %s) ' % x.z
 	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		distinct = False
@@ -65,7 +65,7 @@ def _uniquecount(x):
 		else:
 			c_english = 'the number of %s' % x.c_english
 			c_chinese = '%s的数量' % x.c_chinese
-		z = 'COUNT(%s)' % x.z
+		z = ' COUNT(%s) ' % x.z
 	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
 
@@ -77,7 +77,7 @@ def _count_uniqueness_specified(x, distinct):
 	if distinct and x.dtype != 'star':
 		c_english = 'the number of different values of %s' % x.c_english
 		c_chinese = '%s不同取值的数量' % x.c_chinese
-		z = 'COUNT(distinct %s)' % x.z
+		z = ' COUNT(distinct %s) ' % x.z
 	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		if x.dtype == 'star':
@@ -86,7 +86,7 @@ def _count_uniqueness_specified(x, distinct):
 		else:
 			c_english = 'the number of %s' % x.c_english
 			c_chinese = '%s的数量' % x.c_chinese
-		z = 'COUNT(%s)' % x.z
+		z = ' COUNT(%s) ' % x.z
 	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
 
@@ -235,8 +235,9 @@ class PROPERTYNP(BASENP):
 	#	distinct		bool		# whether it is to be paired with 'distinct count'
 	#	is_fk_left		bool		# whether it appears in the left side of a foreign key relation (left means a reference)
 	#	is_fk_right		bool		# whether it appears in the right side of a foreign key relation (right means basis)
+	#	is_pk			bool		# whether it is a primary key of its table
 	def __init__(self, c_english, c_chinese, z, dtype, table_id=None, overall_idx=None, values=None,
-				 aggr=0, from_sum=False, from_cnt=False, is_unique=False, meta_idx=None):
+				 aggr=0, from_sum=False, from_cnt=False, is_unique=False, meta_idx=None, is_pk=False):
 		BASENP.__init__(self, c_english, c_chinese, z)
 		self.dtype = dtype
 		self.table_id = table_id
@@ -255,6 +256,7 @@ class PROPERTYNP(BASENP):
 		self.distinct = False  # for aggregator 'COUNT', means whether it is 'count' or 'distinct count'
 		self.is_fk_left = False
 		self.is_fk_right = False
+		self.is_pk = is_pk
 
 	def set_values(self, values):
 		assert (values is not None)
@@ -332,11 +334,11 @@ class NP:
 	#	has_except:		bool
 	#	has_intersect:	bool
 	#	distinct:		bool
-	#	main_tid:		int
+	#	main_tids:		list(int)
 	def __init__(self, prev_np=None, queried_props=None, table_ids=None, join_cdts=None,
 				 cdts=None, cdt_linkers=None, group_props=None, having_cdts=None,
 				 orderby_props=None, orderby_order=None, limit=None, np_2=None, qrynp_2=None, has_union=None,
-				 has_except=None, has_intersect=None, distinct=False, main_tid=None):
+				 has_except=None, has_intersect=None, distinct=False, main_tids=None):
 		if prev_np is not None:
 			self.queried_props = copy.deepcopy(prev_np.queried_props)
 			self.table_ids = copy.deepcopy(prev_np.table_ids)
@@ -354,7 +356,7 @@ class NP:
 			self.has_except = prev_np.has_except
 			self.has_intersect = prev_np.has_intersect
 			self.distinct = prev_np.distinct
-			self.main_tid = prev_np.main_tid
+			self.main_tids = prev_np.main_tids
 		else:
 			self.queried_props = None
 			self.table_ids = None
@@ -372,7 +374,7 @@ class NP:
 			self.has_except = None
 			self.has_intersect = None
 			self.distinct = distinct
-			self.main_tid = main_tid
+			self.main_tids = main_tids
 		if queried_props is not None:
 			for prop in queried_props:
 				assert (isinstance(prop, PROPERTYNP))
@@ -551,8 +553,8 @@ class QRYNP:
 				groupby_propnames = []
 				for idx, prop in enumerate(self.np.group_props):
 					groupby_propnames.append(prop.z.format(temp_tabname_bucket[prop.table_id]))
-				z += (' ' + ', '.join(groupby_propnames) + ' ')
-				z_toks += (' ' + ', '.join(groupby_propnames) + ' ').split()
+				z += (' ' + ' , '.join(groupby_propnames) + ' ')
+				z_toks += (' ' + ' , '.join(groupby_propnames) + ' ').split()
 
 		# having conditions
 		if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
@@ -695,26 +697,53 @@ class QRYNP:
 			elif idx + 2 == len(self.np.queried_props):
 				c_english += ' and '
 
-		c_english += ' from '
-		for idx, table_id in enumerate(self.np.table_ids):
-			c_english += typenps[table_id].c_english
-			if idx + 2 < len(self.np.table_ids):
-				c_english += ', '
-			elif idx + 2 == len(self.np.table_ids):
-				c_english += ' and '
+		if self.np.main_tids is None:
+			self.np.main_tids = []
 
-		if self.np.join_cdts is not None:
-			if len(self.np.join_cdts) > 0:
-				c_english += ' whose '
+		# simplify the canonical utterances for join-on conditions when possible in order to help turkers understand
+		# and more accurately annotate
+		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tids) > 0:
+			assert len(self.np.table_ids) > 1
+			for mid in self.np.main_tids:
+				assert mid in self.np.table_ids
+			c_english += ' from '
+			for mtid_idx, mtid in enumerate(self.np.main_tids):
+				c_english += typenps[mtid].c_english
+				if mtid_idx < len(self.np.main_tids) - 1:
+					c_english += ', '
+			c_english += ' and their corresponding '
+			other_tids = copy.deepcopy(self.np.table_ids)
+			for mtid in self.np.main_tids:
+				other_tids.remove(mtid)
+			for mtid in self.np.main_tids:
+				assert mtid not in other_tids
+			for idx, table_id in enumerate(other_tids):
+				c_english += typenps[table_id].c_english
+				if idx + 2 < len(other_tids):
+					c_english += ', '
+				elif idx + 2 == len(other_tids):
+					c_english += ' and '
 		else:
-			self.np.join_cdts = []
-		# all sorts of conditions
-		for idx, cond in enumerate(self.np.join_cdts):
-			c_english += cond.c_english
-			if idx + 2 < len(self.np.join_cdts):
-				c_english += ', '
-			elif idx + 2 == len(self.np.join_cdts):
-				c_english += ' and '
+			c_english += ' from '
+			for idx, table_id in enumerate(self.np.table_ids):
+				c_english += typenps[table_id].c_english
+				if idx + 2 < len(self.np.table_ids):
+					c_english += ', '
+				elif idx + 2 == len(self.np.table_ids):
+					c_english += ' and '
+
+			if self.np.join_cdts is not None:
+				if len(self.np.join_cdts) > 0:
+					c_english += ' whose '
+			else:
+				self.np.join_cdts = []
+			# all sorts of conditions
+			for idx, cond in enumerate(self.np.join_cdts):
+				c_english += cond.c_english
+				if idx + 2 < len(self.np.join_cdts):
+					c_english += ', '
+				elif idx + 2 == len(self.np.join_cdts):
+					c_english += ' and '
 
 		if self.np.cdts is not None:
 			if len(self.np.cdts) > 0:
@@ -812,25 +841,25 @@ class QRYNP:
 				elif idx + 2 == len(self.np.queried_props):
 					sent_1 += ' and '
 
-		if self.np.main_tid is None:
-			self.np.main_tid = []
+		if self.np.main_tids is None:
+			self.np.main_tids = []
 
 		# simplify the canonical utterances for join-on conditions when possible in order to help turkers understand
 		# and more accurately annotate
-		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tid) > 0:
+		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tids) > 0:
 			assert num_tables > 1 and len(self.np.table_ids) > 1
-			for mid in self.np.main_tid:
+			for mid in self.np.main_tids:
 				assert mid in self.np.table_ids
 			sent_1 += ' from '
-			for mtid_idx, mtid in enumerate(self.np.main_tid):
+			for mtid_idx, mtid in enumerate(self.np.main_tids):
 				sent_1 += typenps[mtid].c_english
-				if mtid_idx < len(self.np.main_tid) - 1:
+				if mtid_idx < len(self.np.main_tids) - 1:
 					sent_1 += ', '
 			sent_1 += ' and their corresponding '
 			other_tids = copy.deepcopy(self.np.table_ids)
-			for mtid in self.np.main_tid:
+			for mtid in self.np.main_tids:
 				other_tids.remove(mtid)
-			for mtid in self.np.main_tid:
+			for mtid in self.np.main_tids:
 				assert mtid not in other_tids
 			for idx, table_id in enumerate(other_tids):
 				sent_1 += typenps[table_id].c_english
@@ -1052,6 +1081,10 @@ class QRYNP:
 			c_english = c_english.format([i for i in range(total_len)])
 			c_english = c_english.split(' ### ')
 
+		# if sequence is short, there'd be no need to make it a sequence
+		if len(c_english) < 3:
+			c_english = ['Result 0: '+self.process_ce_verbose(typenps, propertynps)]
+
 		for ce_i in range(len(c_english)):
 			c_english[ce_i] = c_english[ce_i].replace('%', '')
 
@@ -1080,29 +1113,55 @@ class QRYNP:
 			elif idx + 2 == len(self.np.group_props):
 				c_chinese += '和'
 		if len(self.np.group_props) > 0:
-			c_chinese += '，'
+			c_chinese += '的取值，'
 
-		c_chinese += '从'
-		for idx, table_id in enumerate(self.np.table_ids):
-			c_chinese += typenps[table_id].c_chinese
-			if idx + 2 < len(self.np.table_ids):
-				c_chinese += '、'
-			elif idx + 2 == len(self.np.table_ids):
-				c_chinese += '和'
-		c_chinese += '中找出，'
+		if self.np.main_tids is None:
+			self.np.main_tids = []
 
-		if self.np.join_cdts is not None:
-			if len(self.np.join_cdts) > 0:
-				c_chinese += '满足'
+		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tids) > 0:
+			assert len(self.np.table_ids) > 1
+			for mid in self.np.main_tids:
+				assert mid in self.np.table_ids
+			c_chinese += '从'
+			for mtid_idx, mtid in enumerate(self.np.main_tids):
+				c_chinese += typenps[mtid].c_chinese
+				if mtid_idx < len(self.np.main_tids) - 1:
+					c_chinese += '、'
+			c_chinese += '以及相应的'
+			other_tids = copy.deepcopy(self.np.table_ids)
+			for mtid in self.np.main_tids:
+				other_tids.remove(mtid)
+			for mtid in self.np.main_tids:
+				assert mtid not in other_tids
+			for idx, table_id in enumerate(other_tids):
+				c_chinese += typenps[table_id].c_chinese
+				if idx + 2 < len(other_tids):
+					c_chinese += '、'
+				elif idx + 2 == len(other_tids):
+					c_chinese += '和'
+			c_chinese += '中，找出'
 		else:
-			self.np.join_cdts = []
-		# all sorts of conditions
-		for idx, cond in enumerate(self.np.join_cdts):
-			c_chinese += cond.c_chinese
-			if idx + 2 <= len(self.np.join_cdts):
-				c_chinese += '、'
-		if len(self.np.join_cdts) > 0:
-			c_chinese += '的，'
+			c_chinese += '从'
+			for idx, table_id in enumerate(self.np.table_ids):
+				c_chinese += typenps[table_id].c_chinese
+				if idx + 2 < len(self.np.table_ids):
+					c_chinese += '、'
+				elif idx + 2 == len(self.np.table_ids):
+					c_chinese += '和'
+			c_chinese += '中找出，'
+
+			if self.np.join_cdts is not None:
+				if len(self.np.join_cdts) > 0:
+					c_chinese += '满足'
+			else:
+				self.np.join_cdts = []
+			# all sorts of conditions
+			for idx, cond in enumerate(self.np.join_cdts):
+				c_chinese += cond.c_chinese
+				if idx + 2 <= len(self.np.join_cdts):
+					c_chinese += '、'
+			if len(self.np.join_cdts) > 0:
+				c_chinese += '的，'
 
 		if self.np.cdts is not None:
 			if len(self.np.cdts) > 0:
@@ -1180,7 +1239,7 @@ class QRYNP:
 
 	def process_cc_step_by_step(self, typenps, propertynps, finalize=False):
 		c_chinese = []
-		sent_1 = 'Result {0[0]}：'
+		sent_1 = '{0[0]}号结果：'
 		num_tables = len(self.np.table_ids)
 
 		need_from_even_single = False
@@ -1190,22 +1249,25 @@ class QRYNP:
 				if prop.aggr != 3:
 					need_from_even_single = True
 
+		if self.np.main_tids is None:
+			self.np.main_tids = []
+
 		# simplify the canonical utterances for join-on conditions when possible in order to help turkers understand
 		# and more accurately annotate
-		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tid) > 0:
+		if self.np.join_cdts is not None and len(self.np.join_cdts) > 0 and len(self.np.main_tids) > 0:
 			assert num_tables > 1 and len(self.np.table_ids) > 1
-			for mid in self.np.main_tid:
+			for mid in self.np.main_tids:
 				assert mid in self.np.table_ids
 			sent_1 += '从'
-			for mtid_idx, mtid in enumerate(self.np.main_tid):
+			for mtid_idx, mtid in enumerate(self.np.main_tids):
 				sent_1 += typenps[mtid].c_chinese
-				if mtid_idx < len(self.np.main_tid) - 1:
+				if mtid_idx < len(self.np.main_tids) - 1:
 					sent_1 += '、'
 			sent_1 += '以及相应的'
 			other_tids = copy.deepcopy(self.np.table_ids)
-			for mtid in self.np.main_tid:
+			for mtid in self.np.main_tids:
 				other_tids.remove(mtid)
-			for mtid in self.np.main_tid:
+			for mtid in self.np.main_tids:
 				assert mtid not in other_tids
 			for idx, table_id in enumerate(other_tids):
 				sent_1 += typenps[table_id].c_chinese
@@ -1218,6 +1280,13 @@ class QRYNP:
 			# table info
 			if num_tables > 1 or need_from_even_single:
 				sent_1 += '从'
+				for idx, table_id in enumerate(self.np.table_ids):
+					sent_1 += typenps[table_id].c_chinese
+					if idx + 2 < len(self.np.table_ids):
+						sent_1 += '、'
+					elif idx + 2 == len(self.np.table_ids):
+						sent_1 += '和'
+				sent_1 += '中，找出'
 				# join-on conditions info
 				if self.np.join_cdts is not None and len(self.np.join_cdts) > 0:
 					sent_1 += '符合'
@@ -1231,16 +1300,14 @@ class QRYNP:
 					elif idx + 2 == len(self.np.join_cdts):
 						sent_1 += '以及'
 				if len(self.np.join_cdts) > 0:
-					sent_1 += '的'
-				for idx, table_id in enumerate(self.np.table_ids):
-					sent_1 += typenps[table_id].c_chinese
-					if idx + 2 < len(self.np.table_ids):
-						sent_1 += '、'
-					elif idx + 2 == len(self.np.table_ids):
-						sent_1 += '和'
-				sent_1 += '中，找出'
+					sent_1 += '的，'
 			else:
 				sent_1 += '找出'
+
+		if self.np.cdts is not None and len(self.np.cdts) == 1:
+			sent_1 += '满足'
+			sent_1 += self.np.cdts[0].c_chinese
+			sent_1 += '的'
 
 		if self.np.distinct:
 			sent_1 += '全部不同的'
@@ -1289,7 +1356,8 @@ class QRYNP:
 		if self.np.cdts is None:
 			self.np.cdts = []
 		linkers_trans = {'and': '且', 'or': '或'}  # translates cdt_linkers 'and' & 'or' into Chinese words
-		_idx = 0  # the index of condition to work on
+		# the index of condition to work on, set to 1 to skip if len=1 # (in which cases condition is merged with sent_1)
+		_idx = 0 if len(self.np.cdts)!=1 else 1
 		while _idx < len(self.np.cdts):
 			if _idx + 1 < len(self.np.cdts):
 				next_column_id = self.np.cdts[
@@ -1299,14 +1367,14 @@ class QRYNP:
 			# allows for 'and' & 'or' linkers both present in a set of 'where' conditions (though not useful as of
 			# SPIDER's scope)
 			if is_and is None:
-				cur_sent = 'Result {0[%d]}：从 Result {0[%d]}中，找出满足' % (
+				cur_sent = '{0[%d]}号结果：从{0[%d]}号结果中，找出满足' % (
 					len(c_chinese), len(c_chinese) - 1)
 			else:
 				if is_and:
-					cur_sent = 'Result {0[%d]}：从Result {0[%d]}中，找出满足' % (
+					cur_sent = '{0[%d]}号结果：从{0[%d]}号结果中，找出满足' % (
 						len(c_chinese), len(c_chinese) - 1)
 				else:
-					cur_sent = 'Result {0[%d]}: 在Result {0[%d]}之余，找出 Result {0[%d]}中满足' % (
+					cur_sent = '{0[%d]}号结果: 在{0[%d]}号结果之余，找出{0[%d]}号结果中满足' % (
 						len(c_chinese), len(c_chinese) - 1, max(0, len(c_chinese) - 2))
 			cur_sent += self.np.cdts[_idx].c_chinese
 			if next_column_id is not None and next_column_id == self.np.cdts[_idx].left.overall_idx:
@@ -1345,7 +1413,7 @@ class QRYNP:
 
 		# groupby info
 		if self.np.group_props is not None and len(self.np.group_props) > 0:
-			groupby_sent = 'Result {0[%d]}：从Result {0[%d]}中，在每组' % (
+			groupby_sent = '{0[%d]}号结果：从{0[%d]}号结果中，在每组' % (
 				len(c_chinese), len(c_chinese) - 1)
 
 			if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
@@ -1432,7 +1500,7 @@ class QRYNP:
 					_order = '最大的'
 				else:
 					raise AssertionError
-				orderby_sent = 'Result {0[%d]}：找出 Result {0[%d]}中' % (
+				orderby_sent = '{0[%d]}号结果：找出{0[%d]}号结果中' % (
 					len(c_chinese), len(c_chinese) - 1)
 
 			else:
@@ -1447,7 +1515,7 @@ class QRYNP:
 					_order = '降序'
 				else:
 					raise AssertionError
-				orderby_sent = 'Result {0[%d]}: 将Result {0[%d]}按' % (
+				orderby_sent = '{0[%d]}号结果: 将{0[%d]}号结果按' % (
 					len(c_chinese), len(c_chinese) - 1)
 
 			for idx, item in enumerate(self.np.orderby_props):
@@ -1470,15 +1538,15 @@ class QRYNP:
 			second_sents = second_sents.split(' ### ')
 			c_chinese += second_sents
 			if self.np.has_union:
-				post_clause = 'Result {0[%d]}：返回 Result {0[%d]} 中的全部内容和 Result {0[%d]} 中的全部内容' \
+				post_clause = '{0[%d]}号结果：返回{0[%d]}号结果中的全部内容和{0[%d]}号结果中的全部内容' \
 							  % (len(c_chinese), len_cur_sents - 1, len_cur_sents + len_second_sents - 1)
 				assert not self.np.has_except and not self.np.has_intersect
 			elif self.np.has_except:
-				post_clause = 'Result {0[%d]}：返回 Result {0[%d]} 中不被 Result {0[%d]} 包含的部分' \
+				post_clause = '{0[%d]}号结果：返回{0[%d]}号结果中不被 {0[%d]}号结果包含的部分' \
 							  % (len(c_chinese), len_cur_sents - 1, len_cur_sents + len_second_sents - 1)
 				assert not self.np.has_intersect
 			elif self.np.has_intersect:
-				post_clause = 'Result {0[%d]}：返回所有同时在 Result {0[%d]} 和 Result {0[%d]} 中的部分' \
+				post_clause = '{0[%d]}号结果：返回所有同时在{0[%d]}号结果和{0[%d]}号结果中的部分' \
 							  % (len(c_chinese), len_cur_sents - 1, len_cur_sents + len_second_sents - 1)
 			else:
 				raise AssertionError
@@ -1492,6 +1560,9 @@ class QRYNP:
 			c_chinese = c_chinese.format([i for i in range(total_len)])
 			c_chinese = c_chinese.split(' ### ')
 
+		# if sequence is short, there'd be no need to make it a sequence
+		if len(c_chinese) < 3:
+			c_chinese = [self.process_cc_verbose(typenps, propertynps)]
 		for cc_i in range(len(c_chinese)):
 			c_chinese[cc_i] = c_chinese[cc_i].replace('%', '')
 		return c_chinese

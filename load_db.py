@@ -50,8 +50,12 @@ def build_spider_dataset(num):
 			col_z = '[' + col_z + ']'
 		z = '{0}%s' % col_z
 		dtype = meta['column_types'][idx]
+		if idx in meta['primary_keys']:
+			is_primary_key = True
+		else:
+			is_primary_key = False
 		cur_prop = PROPERTYNP(c_english=c_english, c_chinese=c_chinese, z=z, dtype=dtype, table_id=table_idx,
-					   overall_idx=idx - 1, meta_idx=idx - 1)
+					   overall_idx=idx - 1, meta_idx=idx - 1, is_pk=is_primary_key)
 		if idx in meta['primary_keys']:
 			cur_prop.is_primary = True
 		'''
@@ -124,11 +128,12 @@ def build_spider_dataset(num):
 		if meta['column_names'][pair[0]][0] == meta['column_names'][pair[1]][0]:
 			tid = meta['column_names'][pair[0]][0]
 			for i, clone_id in enumerate(typenps[tid].clones):
-				fk_type_matrix[tid][clone_id] += 1
+				fk_type_matrix[clone_id][tid] += 1
 				fk_property_matrix[pair[0] - 1][propertynps[pair[1] - 1].clones[i]] += 1
 				fk_property_matrix[propertynps[pair[0] - 1].clones[i]][pair[1] - 1] += 1
-		fk_property_matrix[pair[0] - 1][pair[1] - 1] += 1
-		fk_type_matrix[meta['column_names'][pair[0]][0]][meta['column_names'][pair[1]][0]] += 1
+		else:
+			fk_property_matrix[pair[0] - 1][pair[1] - 1] += 1
+			fk_type_matrix[meta['column_names'][pair[1]][0]][meta['column_names'][pair[0]][0]] += 1
 	# PROBABLY BRING THE NAME MATCHING INTO ACCOUNT?
 	nm_type_matrix = [[0] * len(typenps) for i in range(len(typenps))]
 	nm_property_matrix = [[0] * len(propertynps) for i in range(len(propertynps))]
@@ -145,8 +150,8 @@ def build_spider_dataset(num):
 					continue
 				nm_property_matrix[i][j] += 1 * NAME_PAIR_WEIGHT
 				nm_property_matrix[j][i] += 1 * NAME_PAIR_WEIGHT
-				nm_type_matrix[propertynps[i].table_id][propertynps[j].table_id] += 1 * NAME_PAIR_WEIGHT
 				nm_type_matrix[propertynps[j].table_id][propertynps[i].table_id] += 1 * NAME_PAIR_WEIGHT
+				nm_type_matrix[propertynps[i].table_id][propertynps[j].table_id] += 1 * NAME_PAIR_WEIGHT
 
 	for prop in propertynps:
 		# if prop.dtype == 'varchar(1000)':
@@ -214,6 +219,8 @@ def build_spider_dataset(num):
 			property_matrix[i][j] = fk_property_matrix[i][j] + nm_property_matrix[i][j]
 
 	property_matrix_np = numpy.matrix(property_matrix)
+	# don't tune property edge weight with pagerank, do it through type pagerank.
+	'''
 	property_scores = pagerank_scores(property_matrix_np)
 	# print(property_matrix)
 	# print("")
@@ -222,6 +229,7 @@ def build_spider_dataset(num):
 		coefficient = property_scores[i] / float(sum(property_matrix[i]))
 		for j in range(len(property_matrix)):
 			property_matrix[i][j] = coefficient * property_matrix[i][j]
+	'''
 
 	# turn the property_matrix un-directioned
 	for i in range(len(property_matrix)):
