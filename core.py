@@ -45,12 +45,15 @@ def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_ps
 	relevant_prop_rels = []
 	for idx, rel in enumerate(prop_rels):
 		# allow only those relations whose types are both used in query
-		# only allow edges from new tid to current tables.
+		# only allow edges from new tid to current tables. （reversed edges assign very little prob, basically
+		# only when no normal directioned edges exist would reversed edges be sampled from this distribution）
 		if rel.table_ids[0] in table_ids and rel.table_ids[1] == new_tid:
 			relevant_prop_rels.append(rel)
 
-	#elif rel.table_ids[0] == new_tid and rel.table_ids[1] in table_ids:
-	#		relevant_prop_rels.append(rel)
+		elif rel.table_ids[0] == new_tid and rel.table_ids[1] in table_ids:
+			rel = copy.deepcopy(rel)
+			rel.score = 0.001
+			relevant_prop_rels.append(rel)
 	# if there are actual relations
 	if len(relevant_prop_rels) > 0:
 		scores = []
@@ -80,6 +83,8 @@ def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_ps
 	else:
 		raise AssertionError
 
+	redundant_propid = numpy.random.choice([fetched_rel.prop_ids[0], fetched_rel.prop_ids[1]], p=[0.2, 0.8])
+
 	cmper = copy.deepcopy(CMPERS[1])  # always use equality comparer
 	c_english = propertynps[fetched_rel.prop_ids[0]].c_english.format(
 		typenps[fetched_rel.table_ids[0]].c_english + '\'s ') + cmper.c_english.format(
@@ -93,7 +98,7 @@ def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_ps
 	right = copy.deepcopy(propertynps[fetched_rel.prop_ids[1]])
 	fetched_cdt = CDT(c_english, c_chinese, z, left, right, cmper)
 
-	return fetched_cdt
+	return fetched_cdt, redundant_propid
 
 
 # 'in' comparer in where conditions appear only in those occasions with c-i conditions
@@ -696,6 +701,10 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		print("scratch_build_began")
 	# about tables to join
 	join_cdts = []
+
+	# only keep one of the two joined-on properties as available-propid to avoid redundancy;
+	# the kept pid is by 80% probability the one on the foreign side.
+	redundant_pids = []
 	prior_importance = calc_importance(typenps, type_mat, fk_rels, [])
 	for tid in range(len(typenps)):
 		if typenps[tid].valid is False:
@@ -752,9 +761,10 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				allow_pseudo_rels = True
 		table_distribution = transform2distribution_proportional(table_distribution)
 		new_tid = numpy.random.choice(numpy.arange(len(typenps)), p=table_distribution)
-		cur_join_cdt = fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_pseudo_rels)
+		cur_join_cdt, redundant_pid = fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_pseudo_rels)
 		join_cdts.append(cur_join_cdt)
 		table_ids.append(new_tid)
+		redundant_pids.append(redundant_pid)
 
 	# here it should be guaranteed that each added table should have at least some
 	# connected columns with some existing tables (either foreign key or same name)
@@ -814,7 +824,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			raise AssertionError
 		# only add those with actual values instead of None
 		for prop_id in typenps[tabid].properties:
-			if propertynps[prop_id].valid:
+			if propertynps[prop_id].valid and prop_id not in redundant_pids:
 				available_prop_ids.append(prop_id)
 	if len(available_prop_ids) == 0:
 		raise AssertionError
