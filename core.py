@@ -4,8 +4,8 @@ from phrase_structures import _uniquecount, _count_uniqueness_specified
 
 CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' between {0[0]} and {0[1]}', 1),
 		  CMP(' is equal to {0}', '是{0}', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
-		  CMP(' is smaller than {0}', '比{0}小', ' < {0}', 4), CMP(' is not smaller than {0}', '不比{0}小', ' >= {0}', 5),
-		  CMP(' is not larger than {0}', '不比{0}大', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
+		  CMP(' is smaller than {0}', '比{0}小', ' < {0}', 4), CMP(' is at least {0}', '不比{0}小', ' >= {0}', 5),
+		  CMP(' is at most {0}', '不比{0}大', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
 		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9)]
 
 # these distributions are naturally proportional
@@ -687,6 +687,375 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 	return final_np, final_qrynp
 
 
+# convert a query in json format into a NP type object
+# pid needs to +1 because 0 is occupied by * in SPIDER format
+def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False):
+	table_ids = []
+	for item in entry_sql['from']['table_units']:
+		if item[0] == 'sql':
+			return "'from' not a table!"
+		elif item[0] == 'table_unit':
+			table_ids.append(item[1])
+		else:
+			raise AssertionError
+
+	join_cdts = []
+	for cond in entry_sql['from']['conds']:
+		if isinstance(cond, str):
+			assert cond == 'and'
+			continue
+		assert cond[1] == 2
+		assert cond[2][0] == 0 and cond[2][1][0] == 0 and cond[2][2] is None
+
+		pid1 = cond[2][1][1]-1
+		pid2 = cond[3]-1
+		assert pid1 >= 0 and pid2 >= 0
+		prop1 = copy.deepcopy(propertynps[pid1])
+		prop2 = copy.deepcopy(propertynps[pid2])
+
+		cmper = copy.deepcopy(CMPERS[1])  # always use equality comparer
+		c_english = propertynps[pid1].c_english.format(
+			typenps[prop1.table_id].c_english + '\'s ') + cmper.c_english.format(
+			propertynps[pid2].c_english.format(typenps[prop2.table_id].c_english + '\'s '))
+		c_chinese = propertynps[pid1].c_chinese.format(
+			typenps[prop1.table_id].c_chinese + '的') + cmper.c_chinese.format(
+			propertynps[pid2].c_chinese.format(typenps[prop2.table_id].c_chinese + '的'))
+		z = propertynps[pid1].z + cmper.z.format(propertynps[pid2].z)
+		fetched_cdt = CDT(c_english, c_chinese, z, prop1, prop2, cmper)
+		join_cdts.append(fetched_cdt)
+
+	tids_is_left = {item: False for item in table_ids}
+	tids_is_right = {item: False for item in table_ids}
+	for item in join_cdts:
+		if item.left.is_fk_left and item.right.is_fk_right:
+			tids_is_left[item.left.table_id] = True
+			tids_is_right[item.right.table_id] = True
+		elif item.left.is_fk_right and item.right.is_fk_left:
+			tids_is_left[item.right.table_id] = True
+			tids_is_right[item.left.table_id] = True
+	main_tid = []
+	join_simplifiable = True
+	if len(table_ids) > 1:
+		for tid in table_ids:
+			if tids_is_left[tid] is True and tids_is_right[tid] is False:
+				if len(main_tid) > 0:
+					print("!")
+				main_tid.append(tid)
+			# for cases where it's about two instances of the same table
+			elif len(tids_is_left) == 1 and len(tids_is_right) == 1:
+				main_tid.append(tid)
+				join_simplifiable = False
+			# if medium tables exist or multiple instances of same table exist, join conditions cannot be simplified
+			# because it'll lose the dependency hierarchy
+			elif tids_is_left[tid] is True and tids_is_right[tid] is True:
+				join_simplifiable = False
+	else:
+		main_tid = [table_ids[0]]
+
+	# check whether the tables joined together have multiple foreign-key reations, if so, then it's not simplifiable
+	if join_simplifiable and len(main_tid) > 0:
+		for item in join_cdts:
+			tid1 = item.left.table_id
+			tid2 = item.right.table_id
+			join_cdts_cnt = 0
+			for rel in fk_rels:
+				if rel.table_ids[0] == tid1 and rel.table_ids[1] == tid2:
+					join_cdts_cnt += 1
+				elif rel.table_ids[0] == tid2 and rel.table_ids[1] == tid1:
+					join_cdts_cnt += 1
+			# if there are multiple foreign key relationships between table pairs in this query, then by simplifying
+			# canonical utterance of join conditions ambiguity would occur
+			if join_cdts_cnt > 1:
+				join_simplifiable = False
+
+	queried_props = []
+	for item in entry_sql['select'][1]:
+		aggr = item[0]
+		if item[1][0] != 0:
+			return "calculation operator in select!"
+		pid = item[1][1][1]-1
+		assert item[1][2] is None
+		if pid < 0:
+			prop = copy.deepcopy(STAR_PROP)
+			prop.table_id = table_ids
+		else:
+			prop = copy.deepcopy(propertynps[pid])  # !!!
+		if aggr == 3:
+			prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
+			if pid < 0:
+				# if there are single2multiple foreign key relationships between the multiple tables
+				#
+				# if there are multiple join-on heads, then it'd be unclear which one is to be counted,
+				# in such cases we rollback to using traditional 'number of entries'
+				if len(main_tid) == 1:
+					type_to_count = typenps[main_tid[0]]
+					prop.c_english = ' the number of %s ' % type_to_count.c_english
+					prop.c_chinese = '%s的数量' % type_to_count.c_chinese
+		else:
+			prop.set_aggr(aggr)
+		queried_props.append(prop)
+
+	cdts = []
+	cdt_linkers = []
+	for cond in entry_sql['where']:
+		if isinstance(cond, str):
+			assert cond == 'or' or cond == 'and'
+			cdt_linkers.append(cond)
+			continue
+
+		cmper = None
+		cmper_idx = cond[1]
+		for item in CMPERS:
+			if item.index == cmper_idx:
+				cmper = copy.deepcopy(item)
+				break
+		assert cmper is not None
+		if cmper_idx == 9:
+			print(str(cond[3]))
+			if str(cond[3]).count('%') == 2:
+				cmper.set_mode('mid')
+			elif str(cond[3])[1] == '%':
+				cmper.set_mode('tail')
+			elif str(cond[3])[-2] == '%':
+				cmper.set_mode('head')
+			elif '%' not in str(cond[3]):
+				cmper.set_mode('mid')
+			else:
+				raise AssertionError
+
+		# does not support calculation operators
+		if cond[2][0] != 0:
+			return "calculation operator in 'where'!"
+
+		pid1 = cond[2][1][1]-1
+		assert cond[2][1][0] == 0 and cond[2][2] is None
+		assert pid1 >= 0
+		chosen_prop = copy.deepcopy(propertynps[pid1])
+		value = cond[3]
+
+		# should be impossible
+		if isinstance(value, list):
+			raise AssertionError
+			assert len(value) == 3
+			assert cond[4] is None
+			pid2 = value[1]-1
+			assert pid2 >= 0
+			prop2 = copy.deepcopy(propertynps[pid2])
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(prop2.c_english.format(''))
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(prop2.c_chinese.format(''))
+			cdt = CDT(c_english, c_chinese, None, chosen_prop, prop2, cmper)
+			cdts.append(cdt)
+
+		elif isinstance(value, dict):
+			if cond[4] is not None:
+				return "between operator with sub-query and value!"
+			try:
+				pack = np_from_entry_dusql(value, typenps, propertynps, fk_rels)
+			except KeyError as e:
+				raise
+			if isinstance(pack, str):
+				return pack
+			else:
+				np_2, qrynp_2 = pack
+
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
+				' ( ' + qrynp_2.c_english + ' ) ')
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
+			z = chosen_prop.z + cmper.z.format(' ( ' + qrynp_2.z + ' ) ')
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, qrynp_2, cmper)
+			cdts.append(cdt)
+		else:
+			try:
+				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
+				value_z = '#' + value.z + '#'
+				value_str = value.z
+			except Exception as e:
+				raise
+			if cond[4] is not None:
+				try:
+					value_2 = cond[4]
+					value_2 = VALUENP(str(value_2), str(value_2), str(value_2), chosen_prop.dtype)
+					value_z_2 = '#' + value_2.z + '#'
+					value_str_2 = value_2.z
+				except Exception as e:
+					raise
+				value = [value, value_2]
+				value_str = [value_str, value_str_2]
+				value_z = [value_z, value_z_2]
+			else:
+				value = [value]
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_str)
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_str)
+			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, value, cmper)
+			cdts.append(cdt)
+	if len(cdts) > 0:
+		assert len(cdts) == (len(cdt_linkers) + 1)
+
+	group_props = []
+	for item in entry_sql['groupBy']:
+		assert item[0] == 0
+		gb_pid = item[1]-1
+		assert gb_pid >= 0
+		gb_prop = copy.deepcopy(propertynps[gb_pid])
+		group_props.append(gb_prop)
+
+	having_cdts = []
+	if len(entry_sql['having']) > 1:
+		return "more than one having condition!"
+	for cond in entry_sql['having']:
+		cmper = None
+		cmper_idx = cond[1]
+		for item in CMPERS:
+			if item.index == cmper_idx:
+				cmper = copy.deepcopy(item)
+		assert cmper is not None
+
+		# does not support calculation operators
+		if cond[2][0] != 0:
+			return "calculation operator in 'having' condition!"
+
+		pid1 = cond[2][1][1] - 1
+		aggr = cond[0]
+		if pid1 < 0:
+			chosen_prop = copy.deepcopy(STAR_PROP)
+			chosen_prop.table_id = table_ids
+		else:
+			chosen_prop = copy.deepcopy(propertynps[pid1])
+		if aggr == 3:
+			chosen_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
+			if pid1 < 0:
+				# if there are single2multiple foreign key relationships between the multiple tables, the
+				if len(main_tid) == 1:
+					type_to_count = typenps[main_tid[0]]
+					chosen_prop.c_english = ' the number of %s ' % type_to_count.c_english
+					chosen_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
+		else:
+			chosen_prop.set_aggr(aggr)
+		value = cond[3]
+
+		assert not isinstance(value, list)
+		if isinstance(value, dict):
+			assert cond[4] is None
+			try:
+				np_2, qrynp_2 = np_from_entry_dusql(value, typenps, propertynps, fk_rels)
+			except KeyError as e:
+				raise
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
+				' ( ' + qrynp_2.c_english + ' ) ')
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format('（' + qrynp_2.c_chinese + '）')
+			z = chosen_prop.z + cmper.z.format(' ( ' + qrynp_2.z + ' ) ')
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, qrynp_2, cmper)
+			having_cdts.append(cdt)
+		else:
+			try:
+				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
+				value_z = '#' + value.z + '#'
+				value_str = value.z
+			except Exception as e:
+				raise
+			if cond[4] is not None:
+				try:
+					value_2 = cond[4]
+					value_2 = VALUENP(str(value_2), str(value_2), str(value_2), chosen_prop.dtype)
+					value_z_2 = '#' + value_2.z + '#'
+					value_str_2 = value_2.z
+				except Exception as e:
+					raise
+				value = [value, value_2]
+				value_str = [value_str, value_str_2]
+				value_z = [value_z, value_z_2]
+			else:
+				value = [value]
+			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_str)
+			c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_str)
+			z = chosen_prop.z + ' ' + cmper.z.format(value_z)
+			cdt = CDT(c_english, c_chinese, z, chosen_prop, value, cmper)
+			having_cdts.append(cdt)
+
+	orderby_props = []
+	orderby_order = None
+	if len(entry_sql['orderBy']) > 0:
+		orderby_order = entry_sql['orderBy'][0]
+		for item in entry_sql['orderBy'][1]:
+			aggr = item[0]
+			ob_pid = item[1][1][1]-1
+			if item[1][0] != 0:
+				return "calculation operator in 'orderBy' clauses!"
+			if ob_pid < 0:
+				ob_prop = copy.deepcopy(STAR_PROP)
+				ob_prop.table_id = table_ids
+			else:
+				ob_prop = copy.deepcopy(propertynps[ob_pid])
+			if aggr == 3:
+				ob_prop.set_aggr(3, function=_count_uniqueness_specified, distinct=False)
+				if ob_pid < 0:
+					# if there are single2multiple foreign key relationships between the multiple tables, the
+					if len(main_tid) == 1:
+						type_to_count = typenps[main_tid[0]]
+						ob_prop.c_english = ' the number of %s ' % type_to_count.c_english
+						ob_prop.c_chinese = '%s的数量' % type_to_count.c_chinese
+			else:
+				ob_prop.set_aggr(aggr)
+			orderby_props.append(ob_prop)
+	else:
+		orderby_props = None
+
+	limit = entry_sql['limit']
+	has_union = False
+	has_except = False
+	has_intersect = False
+	np_2 = None
+	qrynp_2 = None
+
+	if entry_sql['intersect'] is not None:
+		assert entry_sql['union'] is None and entry_sql['except'] is None
+		try:
+			pack = np_from_entry_dusql(entry_sql['intersect'], typenps, propertynps, fk_rels)
+			has_intersect = True
+		except KeyError as e:
+			raise
+		if isinstance(pack, str):
+			return pack
+		else:
+			np_2, qrynp_2 = pack
+
+	if entry_sql['union'] is not None:
+		assert entry_sql['intersect'] is None and entry_sql['except'] is None
+		try:
+			pack = np_from_entry_dusql(entry_sql['union'], typenps, propertynps, fk_rels)
+			has_union = True
+		except KeyError as e:
+			raise
+		if isinstance(pack, str):
+			return pack
+		else:
+			np_2, qrynp_2 = pack
+
+	if entry_sql['except'] is not None:
+		assert entry_sql['union'] is None and entry_sql['intersect'] is None
+		try:
+			pack = np_from_entry_dusql(entry_sql['except'], typenps, propertynps, fk_rels)
+			has_except = True
+		except KeyError as e:
+			raise
+		if isinstance(pack, str):
+			return pack
+		else:
+			np_2, qrynp_2 = pack
+
+	distinct = entry_sql['select'][0]
+
+	if not join_simplifiable:
+		main_tid = []
+	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
+				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
+				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
+				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tids=main_tid)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize)
+	return final_np, final_qrynp
+
+
 # type_mat的连接是单向的；prop_mat的连接是双向的，且矩阵是对称的；这里的property不包括*
 # is_recursive is False & specific_props is not None	->		是一个union / except / intersect 子语句
 def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, is_recursive=False, specific_props=None,
@@ -866,7 +1235,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			where_has_same_entity = True
 			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps,
 													   assigned_prop=current_where_cdt.left)
-		elif rho < 0.95:
+		elif rho < 0.95 or SETTING == 'dusql':
 			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
 			where_has_same_entity = False
 		else:

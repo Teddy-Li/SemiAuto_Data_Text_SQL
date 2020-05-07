@@ -95,10 +95,20 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 		file = json.load(fp)
 
 	if args.pilot:
-		file = random.sample(file, k=50)
+		sample_file = []
+		for item in file:
+			if item['db_id'] == 'course_teach':
+				sample_file.append(item)
+		file = sample_file
+		#file = random.sample(file, k=50)
 
 	with open(out_path, 'w', encoding='utf-8') as fp:
-		fp.write('topic,sequence,gold,ref_sequence,ref_gold,answer,ref_answer,qryidx\n')
+		if args.lang == 'eng':
+			fp.write('topic,sequence,ref_sequence,ref_gold,answer,ref_answer\n')
+		elif args.lang == 'chi':
+			fp.write('topic,sequence,gold,ref_sequence,ref_gold,answer,ref_answer,qryidx\n')
+		else:
+			raise AssertionError
 		for entry in file:
 			dbname = entry['db_id'].split('_')
 			n_dbname = []
@@ -118,10 +128,11 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 					raise AssertionError
 				ref_sequence.append(q)
 			ref_sequence = ' <br> '.join(ref_sequence)
-			ref_sequence = ref_sequence.replace('\"', '')
+			ref_sequence = ref_sequence.replace('\"', '\'')
 			ref_sequence = '\"'+ref_sequence+'\"'
 
 			ref_gold = entry['ref_gold']
+			ref_gold = ref_gold.replace('"', "'")
 			ref_gold = '\"' + ref_gold + '\"'
 
 			entry['ref_response'][0] = entry['ref_response'][0].replace('*', 'Everything')
@@ -156,6 +167,7 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			sequence = '\"'+sequence+'\"'
 
 			gold = entry['question_gold']
+			gold = gold.replace('"', "'")
 			gold = '\"' + gold + '\"'
 
 			entry['answer_sample'][0] = entry['answer_sample'][0].replace('*', 'Everything')
@@ -171,7 +183,11 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 
 			qry_idx = entry['global_idx']
 			qry_idx = '\"'+str(qry_idx)+'\"'
-
-			res = [topic, sequence, gold, ref_sequence, ref_gold, answer_sample, ref_response, qry_idx]
+			if args.lang == 'eng':
+				res = [topic, sequence, ref_sequence, ref_gold, answer_sample, ref_response]
+			elif args.lang == 'chi':
+				res = [topic, sequence, gold, ref_sequence, ref_gold, answer_sample, ref_response, qry_idx]
+			else:
+				raise AssertionError
 			fp.write(','.join(res)+'\n')
 

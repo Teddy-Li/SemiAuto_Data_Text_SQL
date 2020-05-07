@@ -52,6 +52,7 @@ for kidx, key in enumerate(db_infos):
 				if item[1][0] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] or '(' in item[1]:
 					item[1] = '[' + item[1] + ']'
 					sch['column_names'][cid][1] = item[1]
+					print("Column starting with number!")
 				cur_col = item[1] + ' ' + sch['column_types'][cid]
 				#if cid in sch['primary_keys']:
 				#	cur_col += ' PRIMARY KEY '

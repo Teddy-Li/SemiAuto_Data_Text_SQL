@@ -201,6 +201,175 @@ def format_query_to_spider(np, qrynp, database_name, sample, headers):
 	return qry_formatted
 
 
+def format_sql_dusql(np):
+	res = {}
+	if np.has_except is True:
+		res['except'] = format_sql_dusql(np.np_2)
+		res['union'] = None
+		res['intersect'] = None
+	elif np.has_union is True:
+		res['except'] = None
+		res['union'] = format_sql_dusql(np.np_2)
+		res['intersect'] = None
+	elif np.has_intersect is True:
+		res['except'] = None
+		res['union'] = None
+		res['intersect'] = format_sql_dusql(np.np_2)
+	else:
+		res['except'] = None
+		res['union'] = None
+		res['intersect'] = None
+
+	res['from'] = {}
+	conds = []
+	table_units = []
+	for item in np.join_cdts:
+		assert item.cmper.negative is False
+		assert int(item.left.aggr) == 0
+		assert int(item.right.aggr) == 0
+		conds.append(
+			[0, item.cmper.index, [0, [0, item.left.meta_idx + 1], None],
+			 item.right.meta_idx + 1, None])
+	for item in np.table_ids:
+		table_units.append(['table_unit', int(item)])
+	res['from']['conds'] = conds
+	res['from']['table_units'] = table_units
+
+	res['groupBy'] = []
+	for item in np.group_props:
+		res['groupBy'].append([0, item.meta_idx + 1])
+
+	res['having'] = []
+	if np.having_cdts is not None and len(np.having_cdts) > 0:
+
+		for hv_idx, item in enumerate(np.having_cdts):
+			assert item.cmper.negative is False
+			hvg = [int(item.left.aggr), item.cmper.index, [0, [0, item.left.meta_idx + 1], None]]
+			# condition type must be  either cv or ci
+			if isinstance(item.right, list) or isinstance(item.right, numpy.ndarray):
+				if len(item.right) == 1:
+					if item.left.dtype in ['int', 'star']:
+						hvg.append(int(float(item.right[0].z)))
+					elif item.left.dtype == 'double':
+						hvg.append(float(item.right[0].z))
+					else:
+						hvg.append(item.right[0].z)
+					hvg.append(None)
+				else:
+					assert (len(item.right) == 2)
+					if item.left.dtype in ['int', 'star']:
+						hvg.append(int(float(item.right[0].z)))
+						hvg.append(int(float(item.right[1].z)))
+					elif item.left.dtype == 'double':
+						hvg.append(float(item.right[0].z))
+						hvg.append(float(item.right[1].z))
+					else:
+						hvg.append(item.right[0].z)
+						hvg.append(item.right[1].z)
+			else:
+				assert (isinstance(item.right, QRYNP))
+				hvg.append(format_sql_dusql(item.right.np))
+				hvg.append(None)
+			res['having'].append(hvg)
+
+	if np.limit is not None:
+		res['limit'] = int(np.limit)
+	else:
+		res['limit'] = None
+
+	if np.orderby_order is None:
+		res['orderBy'] = []
+	else:
+		res['orderBy'] = [np.orderby_order]
+		orderby_proplist = []
+		for prop in np.orderby_props:
+			orderby_proplist.append([int(prop.aggr), [0, [0, prop.meta_idx + 1], None]])
+		res['orderBy'].append(orderby_proplist)
+
+	res['select'] = []
+	queried_proplist = []
+	for prop in np.queried_props:
+		queried_proplist.append([int(prop.aggr), [0, [0, prop.meta_idx + 1], None]])
+	res['select'].append(queried_proplist)
+	'''
+	try:
+		string = json.dumps(res)
+	except Exception as e:
+		raise AssertionError
+	'''
+	res['where'] = []
+	for cond_idx, cond in enumerate(np.cdts):
+		# convert the condition into a form of list same as SPIDER
+		listed_cond = [0, cond.cmper.index,
+					   [0, [0, cond.left.meta_idx + 1], None]]
+		if isinstance(cond.right, QRYNP):
+			listed_cond.append(format_sql_dusql(cond.right.np))
+			listed_cond.append(None)
+		elif isinstance(cond.right, PROPERTYNP):
+			raise AssertionError  # dusql does not support column-column conditions as where-condition
+			listed_cond.append([0, cond.right.meta_idx + 1])
+			listed_cond.append(None)
+		else:
+			if not isinstance(cond.right, list) and not isinstance(cond.right, numpy.ndarray):
+				print(cond.right)
+				raise AssertionError
+			if len(cond.right) == 1:
+				if cond.left.dtype in ['int', 'star']:
+					#listed_cond.append(int(float(cond.right[0].z.strip('"').strip("'"))))
+					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
+				elif cond.left.dtype == 'double':
+					#listed_cond.append(float(cond.right[0].z.strip('"').strip("'")))
+					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
+				else:
+					listed_cond.append(cond.right[0].z)
+				listed_cond.append(None)
+			elif len(cond.right) == 2:
+				if cond.left.dtype in ['int', 'star']:
+					#listed_cond.append(int(float(cond.right[0].z.strip('"').strip("'"))))
+					#listed_cond.append(int(float(cond.right[1].z.strip('"').strip("'"))))
+					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
+					listed_cond.append(cond.right[1].z.strip('"').strip("'"))
+				elif cond.left.dtype == 'double':
+					#listed_cond.append(float(cond.right[0].z.strip('"').strip("'")))
+					#listed_cond.append(float(cond.right[1].z.strip('"').strip("'")))
+					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
+					listed_cond.append(cond.right[1].z.strip('"').strip("'"))
+				else:
+					listed_cond.append(cond.right[0].z)
+					listed_cond.append(cond.right[1].z)
+			else:
+				raise AssertionError
+		res['where'].append(listed_cond)
+		if cond_idx < len(np.cdt_linkers):
+			res['where'].append(np.cdt_linkers[cond_idx])
+	return res
+
+
+def format_query_to_dusql(np, qrynp, database_name, sample, headers):
+	qry_formatted = {}
+	qry_formatted['db_id'] = database_name
+	qry_formatted['sql_query'] = qrynp.z
+	qry_formatted['question'] = qrynp.c_english
+	qry_formatted['question_sequence'] = qrynp.c_english_sequence
+	qry_formatted['question_chinese'] = qrynp.c_chinese
+	qry_formatted['question_sequence_chinese'] = qrynp.c_chinese_sequence
+	qry_formatted['question_id'] = int(time.time())
+	qry_formatted['sql'] = format_sql_dusql(np)
+	serialized_sample = [', '.join(headers)]
+	for s in sample:
+		assert len(s) == len(headers)
+		serialized_s = []
+		for c in s:
+			try:
+				serialized_s.append(str(c))
+			except Exception as e:
+				serialized_s.append('#Unsupported#')
+		serialized_sample.append(', '.join(serialized_s))
+	qry_formatted['answer_sample'] = serialized_sample
+	assert 'limit' in qry_formatted['sql']
+	return qry_formatted
+
+
 def generate_queries(database_idx, verbose, ref_json):
 	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, valid_database, conn, crsr, num_queries = build_spider_dataset(
 		database_idx)
@@ -246,7 +415,12 @@ def generate_queries(database_idx, verbose, ref_json):
 
 		if len(qry_returned) == 0:
 			should_dump = True
-		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=sample_results, headers=headers)
+		if SETTING in ['spider', 'chisp']:
+			qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=sample_results, headers=headers)
+		elif SETTING == 'dusql':
+			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=sample_results, headers=headers)
+		else:
+			raise AssertionError
 		qry_vecs = sql_features(qry_formatted['sql'])
 		qry_formatted['sql_vec'] = qry_vecs
 		qry_formatted = fetch_refs([qry_formatted], ref_json)[0]
@@ -359,7 +533,12 @@ def debug(db_idx, verbose):
 			print(qrynp.z)
 			print(e)
 			raise
-		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=res[:3], headers=headers)
+		if SETTING in ['spider', 'chisp']:
+			qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=res[:3], headers=headers)
+		elif SETTING == 'dusql':
+			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=sample_results, headers=headers)
+		else:
+			raise AssertionError
 	crsr.close()
 	conn.close()
 	fp.close()
@@ -387,7 +566,12 @@ def hit(db_idx, max_iter, verbose):
 	for i in range(max_iter):
 		np, qrynp = scratch_build(tnps, pnps, type_m, property_m, prop_r, fk_rels, finalize_sequence=True, cursor=crsr,
 								  print_verbose=verbose)
-		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=[], headers=[])
+		if SETTING in ['spider', 'chisp']:
+			qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=[], headers=[])
+		elif SETTING == 'dusql':
+			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=sample_results, headers=headers)
+		else:
+			raise AssertionError
 		has_hit = False
 		for entry_idx, entry in enumerate(entries_to_hit):
 			if already_hit[entry_idx] is True:
@@ -468,18 +652,34 @@ def convert(file_path, mode, set_split, lang):
 			raise AssertionError
 		'''
 		try:
-			pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
+			if SETTING in ['spider', 'chisp']:
+				pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
+								 finalize=True)
+			elif SETTING == 'dusql':
+				pack = np_from_entry_dusql(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
 								 finalize=True)
 		except Exception as e:
 			print("False gold SQL: %d" % dct_idx)
-			print(dct['query'])
+			if SETTING in ['spider', 'chisp']:
+				print(dct['query'])
+			elif SETTING == 'dusql':
+				print(dct['sql_query'])
+			else:
+				raise AssertionError
 			print(entry_sql['from']['table_units'])
 			continue
 
 		if isinstance(pack, str):
 			print("Unexpressable_entry_occurred!")
-			print(dct['query'])
-			unexpressable_entries.append([pack, dct['query']])
+			if SETTING in ['spider', 'chisp']:
+				print(dct['query'])
+				unexpressable_entries.append([pack, dct['query']])
+			elif SETTING == 'dusql':
+				print(dct['sql_query'])
+				unexpressable_entries.append([pack, dct['sql_query']])
+			else:
+				raise AssertionError
+
 			print("")
 			if pack not in error_bucket:
 				error_bucket[pack] = 1
@@ -498,7 +698,13 @@ def convert(file_path, mode, set_split, lang):
 			print(line)
 		print("Gold: "+dct['question'])
 		print("")
-		print(dct['query'])
+
+		if SETTING in ['spider', 'chisp']:
+			print(dct['query'])
+		elif SETTING == 'dusql':
+			print(dct['sql_query'])
+		else:
+			raise AssertionError
 		print(qrynp.z)
 		print("")
 
@@ -518,7 +724,12 @@ def convert(file_path, mode, set_split, lang):
 		else:
 			sample_results = [random.choice(qry_returned)]
 		headers = [tup[0] for tup in crsr.description]
-		qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=sample_results, headers=headers)
+		if SETTING in ['spider', 'chisp']:
+			qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=sample_results, headers=headers)
+		elif SETTING == 'dusql':
+			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=sample_results, headers=headers)
+		else:
+			raise AssertionError
 		qry_formatted['question_gold'] = dct['question']
 		qry_formatted['global_idx'] = dct_idx
 

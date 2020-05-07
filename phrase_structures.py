@@ -686,7 +686,7 @@ class QRYNP:
 			if isinstance(prop.table_id, list):
 				c_english += prop.c_english
 			else:
-				if prop.table_id == tableid_of_last_prop:
+				if prop.table_id == tableid_of_last_prop or len(self.np.table_ids) < 2:
 					name = prop.c_english.format('')
 				else:
 					name = prop.c_english.format(typenps[prop.table_id].c_english + '\'s ')
@@ -812,7 +812,7 @@ class QRYNP:
 					if prop.aggr != 3:
 						need_from_even_single = True
 				else:
-					if prop.table_id == tableid_of_last_prop:
+					if prop.table_id == tableid_of_last_prop or len(self.np.table_ids) < 2:
 						name = prop.c_english.format('')
 					else:
 						name = prop.c_english.format(typenps[prop.table_id].c_english + '\'s ')
@@ -1083,7 +1083,7 @@ class QRYNP:
 
 		# if sequence is short, there'd be no need to make it a sequence
 		if len(c_english) < 3:
-			c_english = ['Result 0: '+self.process_ce_verbose(typenps, propertynps)]
+			c_english = ['Result 0: Find '+self.process_ce_verbose(typenps, propertynps)]
 
 		for ce_i in range(len(c_english)):
 			c_english[ce_i] = c_english[ce_i].replace('%', '')
@@ -1186,7 +1186,7 @@ class QRYNP:
 			if isinstance(prop.table_id, list):
 				c_chinese += prop.c_chinese
 			else:
-				if prop.table_id == tableid_of_last_prop:
+				if prop.table_id == tableid_of_last_prop or len(self.np.table_ids) < 2:
 					name = prop.c_chinese.format('')
 				else:
 					name = prop.c_chinese.format(typenps[prop.table_id].c_chinese + '的')
@@ -1562,7 +1562,7 @@ class QRYNP:
 
 		# if sequence is short, there'd be no need to make it a sequence
 		if len(c_chinese) < 3:
-			c_chinese = [self.process_cc_verbose(typenps, propertynps)]
+			c_chinese = ['0号结果：'+self.process_cc_verbose(typenps, propertynps)]
 		for cc_i in range(len(c_chinese)):
 			c_chinese[cc_i] = c_chinese[cc_i].replace('%', '')
 		return c_chinese
