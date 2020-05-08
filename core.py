@@ -4,9 +4,9 @@ from phrase_structures import _uniquecount, _count_uniqueness_specified
 
 CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' between {0[0]} and {0[1]}', 1),
 		  CMP(' is equal to {0}', '是{0}', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
-		  CMP(' is smaller than {0}', '比{0}小', ' < {0}', 4), CMP(' is at least {0}', '不比{0}小', ' >= {0}', 5),
-		  CMP(' is at most {0}', '不比{0}大', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
-		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9)]
+		  CMP(' is smaller than {0}', '比{0}小', ' < {0}', 4), CMP(' is at least {0}', '最低{0}', ' >= {0}', 5),
+		  CMP(' is at most {0}', '最高{0}', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
+		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9), CMP(" is not among {0}", '不在{0}之中', ' not in {0} ', 0)]
 
 # these distributions are naturally proportional
 num_tables_distribution = {False: transform2distribution_proportional(numpy.array([4361., 3200., 22., 6.])),
@@ -294,7 +294,8 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 	right_subq_np, right_subq_qrynp = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels,
 													is_recursive=True,
 													specific_props=[prop4right_subq], cursor=cursor,
-													require_singlereturn=(cmper.index != 8), print_verbose=verbose)
+													require_singlereturn=(cmper.index != 8), print_verbose=verbose,
+													is_rec=True)
 
 	if use_aggr_for_left_prop:
 		# assign different distributions for aggregators according to the property dtypes
@@ -311,7 +312,7 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 
 # convert a query in json format into a NP type object
 # pid needs to +1 because 0 is occupied by * in SPIDER format
-def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
+def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_recur=False):
 	table_ids = []
 	for item in entry_sql['from']['table_units']:
 		if item[0] == 'sql':
@@ -476,7 +477,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 			if cond[4] is not None:
 				return "between operator with sub-query and value!"
 			try:
-				pack = np_from_entry(value, typenps, propertynps, fk_rels)
+				pack = np_from_entry(value, typenps, propertynps, fk_rels, is_recur=is_recur)
 			except KeyError as e:
 				raise
 			if isinstance(pack, str):
@@ -567,7 +568,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 		if isinstance(value, dict):
 			assert cond[4] is None
 			try:
-				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps, fk_rels)
+				np_2, qrynp_2 = np_from_entry(value, typenps, propertynps, fk_rels, is_recur=True)
 			except KeyError as e:
 				raise
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
@@ -642,7 +643,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 	if entry_sql['intersect'] is not None:
 		assert entry_sql['union'] is None and entry_sql['except'] is None
 		try:
-			pack = np_from_entry(entry_sql['intersect'], typenps, propertynps, fk_rels)
+			pack = np_from_entry(entry_sql['intersect'], typenps, propertynps, fk_rels, is_recur=is_recur)
 			has_intersect = True
 		except KeyError as e:
 			raise
@@ -654,7 +655,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 	if entry_sql['union'] is not None:
 		assert entry_sql['intersect'] is None and entry_sql['except'] is None
 		try:
-			pack = np_from_entry(entry_sql['union'], typenps, propertynps, fk_rels)
+			pack = np_from_entry(entry_sql['union'], typenps, propertynps, fk_rels, is_recur=is_recur)
 			has_union = True
 		except KeyError as e:
 			raise
@@ -666,7 +667,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 	if entry_sql['except'] is not None:
 		assert entry_sql['union'] is None and entry_sql['intersect'] is None
 		try:
-			pack = np_from_entry(entry_sql['except'], typenps, propertynps, fk_rels)
+			pack = np_from_entry(entry_sql['except'], typenps, propertynps, fk_rels, is_recur=is_recur)
 			has_except = True
 		except KeyError as e:
 			raise
@@ -683,13 +684,13 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False):
 				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
 				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tids=main_tid)
-	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize, is_recur=is_recur)
 	return final_np, final_qrynp
 
 
 # convert a query in json format into a NP type object
 # pid needs to +1 because 0 is occupied by * in SPIDER format
-def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False):
+def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_recur=False):
 	table_ids = []
 	for item in entry_sql['from']['table_units']:
 		if item[0] == 'sql':
@@ -769,7 +770,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 				join_simplifiable = False
 
 	queried_props = []
-	for item in entry_sql['select'][1]:
+	for item in entry_sql['select']:
 		aggr = item[0]
 		if item[1][0] != 0:
 			return "calculation operator in select!"
@@ -809,10 +810,16 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 			if item.index == cmper_idx:
 				cmper = copy.deepcopy(item)
 				break
-		assert cmper is not None
+		if cmper is None:
+			print(cmper_idx)
+			raise AssertionError
+		if cmper_idx == 0:
+			print("cmper_idx 0!")
 		if cmper_idx == 9:
 			print(str(cond[3]))
-			if str(cond[3]).count('%') == 2:
+			if len(str(cond[3])) == 1:
+				cmper.set_mode('equal')
+			elif str(cond[3]).count('%') == 2:
 				cmper.set_mode('mid')
 			elif str(cond[3])[1] == '%':
 				cmper.set_mode('tail')
@@ -850,7 +857,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 			if cond[4] is not None:
 				return "between operator with sub-query and value!"
 			try:
-				pack = np_from_entry_dusql(value, typenps, propertynps, fk_rels)
+				pack = np_from_entry_dusql(value, typenps, propertynps, fk_rels, is_recur=True)
 			except KeyError as e:
 				raise
 			if isinstance(pack, str):
@@ -866,6 +873,8 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 			cdts.append(cdt)
 		else:
 			try:
+				if chosen_prop.dtype not in ['int', 'double', 'year', 'datetime']:
+					value = "'"+str(value)+"'"
 				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
 				value_z = '#' + value.z + '#'
 				value_str = value.z
@@ -938,7 +947,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 		if isinstance(value, dict):
 			assert cond[4] is None
 			try:
-				np_2, qrynp_2 = np_from_entry_dusql(value, typenps, propertynps, fk_rels)
+				np_2, qrynp_2 = np_from_entry_dusql(value, typenps, propertynps, fk_rels, is_recur=is_recur)
 			except KeyError as e:
 				raise
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(
@@ -1011,7 +1020,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 	if entry_sql['intersect'] is not None:
 		assert entry_sql['union'] is None and entry_sql['except'] is None
 		try:
-			pack = np_from_entry_dusql(entry_sql['intersect'], typenps, propertynps, fk_rels)
+			pack = np_from_entry_dusql(entry_sql['intersect'], typenps, propertynps, fk_rels, is_recur=is_recur)
 			has_intersect = True
 		except KeyError as e:
 			raise
@@ -1023,7 +1032,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 	if entry_sql['union'] is not None:
 		assert entry_sql['intersect'] is None and entry_sql['except'] is None
 		try:
-			pack = np_from_entry_dusql(entry_sql['union'], typenps, propertynps, fk_rels)
+			pack = np_from_entry_dusql(entry_sql['union'], typenps, propertynps, fk_rels, is_recur=is_recur)
 			has_union = True
 		except KeyError as e:
 			raise
@@ -1035,7 +1044,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 	if entry_sql['except'] is not None:
 		assert entry_sql['union'] is None and entry_sql['intersect'] is None
 		try:
-			pack = np_from_entry_dusql(entry_sql['except'], typenps, propertynps, fk_rels)
+			pack = np_from_entry_dusql(entry_sql['except'], typenps, propertynps, fk_rels, is_recur=is_recur)
 			has_except = True
 		except KeyError as e:
 			raise
@@ -1044,22 +1053,20 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 		else:
 			np_2, qrynp_2 = pack
 
-	distinct = entry_sql['select'][0]
-
 	if not join_simplifiable:
 		main_tid = []
 	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
 				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
-				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tids=main_tid)
-	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize)
+				  has_except=has_except, has_intersect=has_intersect, main_tids=main_tid)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize, is_recur=is_recur)
 	return final_np, final_qrynp
 
 
 # type_mat的连接是单向的；prop_mat的连接是双向的，且矩阵是对称的；这里的property不包括*
 # is_recursive is False & specific_props is not None	->		是一个union / except / intersect 子语句
 def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, is_recursive=False, specific_props=None,
-				  print_verbose=False, finalize_sequence=False, cursor=None, require_singlereturn=False):
+				  print_verbose=False, finalize_sequence=False, cursor=None, require_singlereturn=False, is_recur=False):
 	res_is_single = False  # initialize result status as not single
 	# set random seeds
 	random.seed()
@@ -1209,7 +1216,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 	cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(STAR_PROP)], table_ids=table_ids, join_cdts=join_cdts,
 				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])], orderby_order='asc',
 				limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
-	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 	prev_res = cursor.execute(cur_qrynp.z).fetchall()
 	ci_occured_flag = False
 	_turn_cnter = 0
@@ -1265,7 +1272,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					cdts=where_cdts, cdt_linkers=where_linkers,
 					orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 					orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
-		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 
 		res = cursor.execute(cur_qrynp.z).fetchall()
 		if len(res) == 1:
@@ -1347,7 +1354,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
 						group_props=groupby_props + [copy.deepcopy(propertynps[idx])], having_cdts=None, main_tids=main_tid)
-			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			all_one = True
 			for item in res:
@@ -1407,12 +1414,12 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			prev_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						 cdts=where_cdts, cdt_linkers=where_linkers,
 						 group_props=groupby_props, main_tids=main_tid)
-			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps)
+			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 			prev_res = cursor.execute(prev_qrynp.z).fetchall()
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
 						group_props=groupby_props, having_cdts=having_cdts, main_tids=main_tid)
-			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			if len(res) == 0 or len(res) == len(prev_res):
 				if len(res) == len(prev_res):
@@ -1511,7 +1518,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 							group_props=groupby_props, having_cdts=having_cdts,
 							orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 							orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
-				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+				cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 				res = cursor.execute(cur_qrynp.z).fetchall()
 				if len(res) > 1 or rho < 0.05:
 					aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)),
@@ -1561,7 +1568,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				group_props=groupby_props, having_cdts=having_cdts,
 				orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 				orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
-	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 	res = cursor.execute(cur_qrynp.z).fetchall()
 	if len(res) <= 1:
 		num_orderbys = 0
@@ -1625,7 +1632,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
 				having_cdts=having_cdts, orderby_props=[copy.deepcopy(propertynps[available_prop_ids[0]])],
 				orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
-	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
+	cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence
+					  , is_recur=is_recur)
 	res = cursor.execute(cur_qrynp.z).fetchall()
 	if len(res) == 1000:
 		print("!!!!!")
@@ -1754,7 +1762,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props,
 						having_cdts=having_cdts, main_tids=main_tid)
-			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
+			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence
+							  , is_recur=is_recur)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			len_res_prime = max(len(res), 1)
 			limit_dist = limit_dist[:len_res_prime + 1]
@@ -1788,10 +1797,10 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				# here because the assigned properties might not be compatible with group-by clauses or such, it might not
 				# run, if it doesn't run, just discard it
 				np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, is_recursive=False,
-											  specific_props=props2query, cursor=cursor, print_verbose=print_verbose)
+											  specific_props=props2query, cursor=cursor, print_verbose=print_verbose, is_recur=is_recur)
 			else:
 				np_2, qrynp_2 = modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, cur_np,
-											 available_prop_ids_after_where, cursor, print_verbose)
+											 available_prop_ids_after_where, cursor, print_verbose, is_recur=is_recur)
 			# choose between using the second query as an 'union' or an 'except'
 			rho = random.random()
 			if rho < 0.1:
@@ -1806,7 +1815,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, main_tids=main_tid)
-		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
+		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence, is_recur=is_recur)
 		res_1 = cursor.execute(cur_qrynp.z).fetchall()
 		res_2 = cursor.execute(qrynp_2.z).fetchall()
 		if either_contain(res_1, res_2):
@@ -1823,7 +1832,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 					has_union=has_union, has_except=has_except, has_intersect=has_intersect, main_tids=main_tid)
-	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
+	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence
+						  , is_recur=is_recur)
 	res = cursor.execute(inspect_qrynp.z).fetchall()
 	if len(res) > 200:
 		DISTINCT_PROB = 0.2
@@ -1844,7 +1854,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				  orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 				  has_union=has_union, has_except=has_except, has_intersect=has_intersect, distinct=distinct,
 				  main_tids=main_tid)
-	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence
+						, is_recur=is_recur)
 	if print_verbose:
 		print("ALL SET!")
 		print("-----------")
@@ -1852,7 +1863,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 
 
 def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, last_np, available_prop_ids, cursor,
-				 print_verbose):
+				 print_verbose, is_recur=False):
 	rho = random.random()
 	final_np = None
 	final_qrynp = None
@@ -1880,11 +1891,11 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, l
 			# $execution-guidance
 			cur_np = copy.deepcopy(last_np)
 			cur_np.cdts[to_replace_idx] = current_where_cdt
-			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
-			last_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
+			last_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 			prev_np = copy.deepcopy(cur_np)
 			prev_np.cdts = prev_np.cdts[:to_replace_idx] + prev_np.cdts[to_replace_idx + 1:]
-			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps)
+			prev_qrynp = QRYNP(prev_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			prev_res = cursor.execute(prev_qrynp.z).fetchall()
@@ -1926,8 +1937,8 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, l
 				else:
 					cur_np.cdt_linkers.append('and')
 
-			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
-			last_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps)
+			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
+			last_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			last_res = cursor.execute(last_qrynp.z).fetchall()

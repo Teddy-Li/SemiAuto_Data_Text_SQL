@@ -12,17 +12,30 @@ PAGERANK_QUIT_EPOCH = 20
 
 db_ids_to_ignore = [124, 131]
 
-SETTING = 'spider'
+# SETTING = 'spider'
 
+SETTING = 'chisp'
+
+# SETTING = 'dusql'
+
+'''
 DATABASE_PATH = './spider/spider/database'
 TABLE_METADATA_PATH = './spider/spider/tables_mod.json'
 SAVE_PATH = './saved_results_spider/'
-
 '''
+
+
 DATABASE_PATH = './CSpider/database'
 TABLE_METADATA_PATH = './CSpider/tables_mod.json'
 SAVE_PATH = './saved_results_CSpider'
+
+
 '''
+DATABASE_PATH = './DuSQL/databases'
+TABLE_METADATA_PATH = './DuSQL/tables_mod.json'
+SAVE_PATH = './saved_results_dusql'
+'''
+
 
 def transform2distribution_proportional(scores):
 	# strip the negative values to zero (the negative values were there in the first hand
@@ -646,7 +659,7 @@ def solve_ztok_aggr(z_toks):
 	return new_ztoks
 
 
-def sql_features(sql_struct):
+def sql_features_spider(sql_struct):
 	features = []
 	# len1, len2, len3, len4, hasStar, hasMax, hasMin, hasCount, hasSum, hasAvg
 	select_feat = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -804,15 +817,195 @@ def sql_features(sql_struct):
 	post_feat = [0, 0, 0]  # union, except, intersect
 
 	if sql_struct['union'] is not None:
-		vec_2 = sql_features(sql_struct['union'])
+		vec_2 = sql_features_spider(sql_struct['union'])
 		post_feat[0] = 4
 		vec_2[0][-3] = 4
 	elif sql_struct['except'] is not None:
-		vec_2 = sql_features(sql_struct['except'])
+		vec_2 = sql_features_spider(sql_struct['except'])
 		post_feat[1] = 4
 		vec_2[0][-2] = 4
 	elif sql_struct['intersect'] is not None:
-		vec_2 = sql_features(sql_struct['intersect'])
+		vec_2 = sql_features_spider(sql_struct['intersect'])
+		post_feat[2] = 4
+		vec_2[0][-1] = 4
+	else:
+		vec_2 = None
+	features += post_feat
+	features = [features]
+	if vec_2 is not None:
+		features += vec_2
+	return features
+
+
+def sql_features_dusql(sql_struct):
+	features = []
+	# len1, len2, len3, len4, hasStar, hasMax, hasMin, hasCount, hasSum, hasAvg
+	select_feat = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	if len(sql_struct['select']) == 1:
+		select_feat[0] = 1
+	elif len(sql_struct['select']) == 2:
+		select_feat[1] = 1
+	elif len(sql_struct['select']) == 3:
+		select_feat[2] = 1
+	elif len(sql_struct['select']) > 3:
+		select_feat[3] = 1
+	else:
+		raise AssertionError
+	for item in sql_struct['select']:
+		if item[1][1][1] == 0:
+			select_feat[4] = 4
+		if item[0] == 1:
+			select_feat[5] = 2
+		elif item[0] == 2:
+			select_feat[6] = 2
+		elif item[0] == 3:
+			select_feat[7] = 2
+		elif item[0] == 4:
+			select_feat[8] = 2
+		elif item[0] == 5:
+			select_feat[9] = 2
+		elif item[0] == 0:
+			pass
+		else:
+			raise AssertionError
+	features += select_feat
+
+	from_feat = [0, 0, 0, 0, 0] # len1, len2, len3, len4, join-equal-to-len_minus_1
+	if len(sql_struct['from']['table_units']) == 1:
+		from_feat[0] = 1
+	elif len(sql_struct['from']['table_units']) == 2:
+		from_feat[1] = 1
+	elif len(sql_struct['from']['table_units']) == 3:
+		from_feat[2] = 1
+	elif len(sql_struct['from']['table_units']) > 3:
+		from_feat[3] = 1
+	else:
+		raise AssertionError
+	if len(sql_struct['from']['conds']) == (len(sql_struct['from']['table_units'])-1):
+		from_feat[4] = 2
+	features += from_feat
+
+	# len0, len1, len2, len3, len4, hasStar, hasMax, hasMin, hasCount, hasSum, hasAvg, hasSubq, has_col
+	# hasBetween, hasEqual, hasLT, hasST, hasNLT, hasNST, hasNE, hasIn, hasLike, hasNotIn
+	where_feat = [0, 0, 0, 0, 0,
+				  0, 0, 0, 0, 0, 0, 0, 0,
+				  0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+	if len(sql_struct['where']) == 0:
+		where_feat[0] = 2
+	elif len(sql_struct['where']) == 1:
+		where_feat[1] = 1
+	elif len(sql_struct['where']) == 2:
+		where_feat[2] = 1
+	elif len(sql_struct['where']) == 3:
+		where_feat[3] = 1
+	elif len(sql_struct['where']) > 3:
+		where_feat[4] = 1
+	else:
+		raise AssertionError
+
+	for item in sql_struct['where']:
+		if isinstance(item, str):
+			continue
+		if item[2][1][1] == 0:
+			where_feat[5] = 4
+		if item[0] == 0:
+			pass
+		elif item[0] == 1:
+			where_feat[6] = 1
+		elif item[0] == 2:
+			where_feat[7] = 1
+		elif item[0] == 3:
+			where_feat[8] = 1
+		elif item[0] == 4:
+			where_feat[9] = 1
+		elif item[0] == 5:
+			where_feat[10] = 1
+		else:
+			raise AssertionError
+		if isinstance(item[3], dict):
+			where_feat[11] = 4
+		elif isinstance(item[3], list):
+			where_feat[12] = 4
+
+		if item[1] == 1:
+			where_feat[13] = 1
+		elif item[1] == 2:
+			where_feat[14] = 1
+		elif item[1] == 3:
+			where_feat[15] = 1
+		elif item[1] == 4:
+			where_feat[16] = 1
+		elif item[1] == 5:
+			where_feat[17] = 1
+		elif item[1] == 6:
+			where_feat[18] = 1
+		elif item[1] == 7:
+			where_feat[19] = 1
+		elif item[1] == 8:
+			where_feat[20] = 1
+		elif item[1] == 9:
+			where_feat[21] = 1
+		elif item[1] == 0:
+			where_feat[22] = 1
+		else:
+			raise AssertionError
+	features += where_feat
+
+	gb_feat = [0, 0, 0, 0, 0, 0]  # len0,len1, len2, len3, has_having, having_subq
+	if len(sql_struct['groupBy']) == 0:
+		gb_feat[0] = 1
+	elif len(sql_struct['groupBy']) == 1:
+		gb_feat[1] = 1
+	elif len(sql_struct['groupBy']) == 2:
+		gb_feat[2] = 1
+	elif len(sql_struct['groupBy']) > 2:
+		gb_feat[3] = 1
+
+	if len(sql_struct['having']) > 0:
+		gb_feat[4] = 2
+	for item in sql_struct['having']:
+		if isinstance(item, str):
+			continue
+		if isinstance(item[3], dict):
+			gb_feat[5] = 2
+	features += gb_feat
+
+	ob_feat = [0, 0, 0, 0, 0, 0, 0, 0]  # len0, len1, len2, len3, asc, desc, has_limit, limit 1
+	if len(sql_struct['orderBy']) == 0:
+		ob_feat[0] = 1
+	elif len(sql_struct['orderBy'][1]) == 1:
+		ob_feat[1] = 1
+	elif len(sql_struct['orderBy'][1]) == 2:
+		ob_feat[2] = 1
+	elif len(sql_struct['orderBy'][1]) > 2:
+		ob_feat[3] = 1
+	else:
+		raise AssertionError
+	if len(sql_struct['orderBy']) > 0 and sql_struct['orderBy'][0] == 'asc':
+		ob_feat[4] = 1
+	elif len(sql_struct['orderBy']) > 0 and sql_struct['orderBy'][0] == 'desc':
+		ob_feat[5] = 1
+	else:
+		pass
+	if sql_struct['limit'] is not None:
+		ob_feat[6] = 1
+		if sql_struct['limit'] == 1:
+			ob_feat[7] = 2
+	features += ob_feat
+
+	post_feat = [0, 0, 0]  # union, except, intersect
+
+	if sql_struct['union'] is not None:
+		vec_2 = sql_features_dusql(sql_struct['union'])
+		post_feat[0] = 4
+		vec_2[0][-3] = 4
+	elif sql_struct['except'] is not None:
+		vec_2 = sql_features_dusql(sql_struct['except'])
+		post_feat[1] = 4
+		vec_2[0][-2] = 4
+	elif sql_struct['intersect'] is not None:
+		vec_2 = sql_features_dusql(sql_struct['intersect'])
 		post_feat[2] = 4
 		vec_2[0][-1] = 4
 	else:

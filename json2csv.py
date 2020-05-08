@@ -3,6 +3,7 @@ import os
 import argparse
 import random
 
+alphas = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l,', 'm']
 
 def parse_colors_english(item):
 	q = []
@@ -42,6 +43,11 @@ def parse_colors_chinese(item):
 	c_start = None  # start index of ongoing column name
 	for c_idx, c in enumerate(item):
 		if c == '@':
+			if c_idx != 0 and c_idx != len(item)-1 and item[c_idx-1].encode('UTF-8').isalnum() and item[c_idx+1].encode('UTF-8').isalnum():
+				print(item[c_idx-1])
+				print(item[c_idx])
+				q += c
+				continue
 			if c_start is not None:
 				print(item)
 				raise AssertionError

@@ -290,7 +290,7 @@ def format_sql_dusql(np):
 	queried_proplist = []
 	for prop in np.queried_props:
 		queried_proplist.append([int(prop.aggr), [0, [0, prop.meta_idx + 1], None]])
-	res['select'].append(queried_proplist)
+	res['select'] = queried_proplist
 	'''
 	try:
 		string = json.dumps(res)
@@ -421,7 +421,12 @@ def generate_queries(database_idx, verbose, ref_json):
 			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=sample_results, headers=headers)
 		else:
 			raise AssertionError
-		qry_vecs = sql_features(qry_formatted['sql'])
+		if SETTING in ['spider', 'chisp']:
+			qry_vecs = sql_features_spider(qry_formatted['sql'])
+		elif SETTING in ['dusql']:
+			qry_vecs = sql_features_dusql(qry_formatted['sql'])
+		else:
+			raise AssertionError
 		qry_formatted['sql_vec'] = qry_vecs
 		qry_formatted = fetch_refs([qry_formatted], ref_json)[0]
 
@@ -536,7 +541,7 @@ def debug(db_idx, verbose):
 		if SETTING in ['spider', 'chisp']:
 			qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=res[:3], headers=headers)
 		elif SETTING == 'dusql':
-			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=sample_results, headers=headers)
+			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=res[:3], headers=headers)
 		else:
 			raise AssertionError
 	crsr.close()
@@ -569,7 +574,7 @@ def hit(db_idx, max_iter, verbose):
 		if SETTING in ['spider', 'chisp']:
 			qry_formatted = format_query_to_spider(np, qrynp, database_name, sample=[], headers=[])
 		elif SETTING == 'dusql':
-			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=sample_results, headers=headers)
+			qry_formatted = format_query_to_dusql(np, qrynp, database_name, sample=[], headers=[])
 		else:
 			raise AssertionError
 		has_hit = False
@@ -636,7 +641,9 @@ def convert(file_path, mode, set_split, lang):
 					db_num = db_idx
 					meta = item
 					break
-			assert db_num is not None
+			if db_num is None:
+				print("!")
+				raise AssertionError
 			database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, \
 			valid_database, conn, crsr, num_queries = build_spider_dataset(db_num)
 		if dct['db_id'] == 'formula_1':
@@ -658,6 +665,9 @@ def convert(file_path, mode, set_split, lang):
 			elif SETTING == 'dusql':
 				pack = np_from_entry_dusql(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
 								 finalize=True)
+			else:
+				raise AssertionError
+
 		except Exception as e:
 			print("False gold SQL: %d" % dct_idx)
 			if SETTING in ['spider', 'chisp']:
@@ -714,6 +724,8 @@ def convert(file_path, mode, set_split, lang):
 		try:
 			qry_returned = crsr.execute(qrynp.z).fetchall()
 		except Exception as e:
+			if 'near "("' in str(e):
+				continue
 			if dct['db_id'] == 'formula_1':
 				continue
 			print(e)
@@ -733,7 +745,10 @@ def convert(file_path, mode, set_split, lang):
 		qry_formatted['question_gold'] = dct['question']
 		qry_formatted['global_idx'] = dct_idx
 
-		qry_vecs = sql_features(qry_formatted['sql'])
+		if SETTING in ['spider', 'chisp']:
+			qry_vecs = sql_features_spider(qry_formatted['sql'])
+		elif SETTING == 'dusql':
+			qry_vecs = sql_features_dusql(qry_formatted['sql'])
 		qry_formatted['sql_vec'] = qry_vecs
 
 		#res = {'sql': dct['query'], 'query_toks': dct['query_toks'], 'query_toks_no_value': dct['query_toks_no_value'],

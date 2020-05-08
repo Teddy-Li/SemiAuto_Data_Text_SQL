@@ -10,7 +10,12 @@ def build_spider_dataset(num):
 	with open(TABLE_METADATA_PATH, 'r') as fp:
 		json_file = json.load(fp)
 	meta = json_file[num]
-	database_name = DATABASE_PATH + '/%s/%s.sqlite' % (meta['db_id'], meta['db_id'])
+	if SETTING in ['spider', 'chisp']:
+		database_name = DATABASE_PATH + '/%s/%s.sqlite' % (meta['db_id'], meta['db_id'])
+	elif SETTING == 'dusql':
+		database_name = DATABASE_PATH + '/%s.db' % meta['db_id']
+	else:
+		raise AssertionError
 	print(meta['db_id'])
 	propertynps = []
 
@@ -26,7 +31,7 @@ def build_spider_dataset(num):
 		c_chinese = '@' + tab_name + '@'
 		z = meta['table_names_original'][idx]
 		print(z)
-		if ' ' in z:
+		if ' ' in z or z[0] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] or '(' in z:
 			z = '[' + z + ']'
 		properties = []
 		for prop_idx, prop_ori in enumerate(meta['column_names']):
@@ -46,7 +51,7 @@ def build_spider_dataset(num):
 		c_chinese = '{0}$' + prop_name[1] + '$'
 		col_z = meta['column_names_original'][idx][1]
 		# if the name contains ' ', wrap it with brackets
-		if ' ' in col_z:
+		if ' ' in col_z or col_z[0] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] or '(' in col_z:
 			col_z = '[' + col_z + ']'
 		z = '{0}%s' % col_z
 		dtype = meta['column_types'][idx]
@@ -185,6 +190,8 @@ def build_spider_dataset(num):
 				item_str = item
 			if prop.dtype in ['datetime', 'bool'] and item_str[0] not in ["'", '"']:
 				item_str = "'" + item_str + "'"
+			elif ('varchar' in prop.dtype or prop.dtype == 'bit') and len(item_str) > 0 and "'" != item_str[0] and '"' != item_str[0] and "'" != item_str[-1] and '"' != item_str[-1]:
+				item_str = '"' + item_str + '"'
 
 			# do not save those None or '' values to avoid confusion
 			if item is None or item == '':
@@ -232,9 +239,9 @@ def build_spider_dataset(num):
 	'''
 
 	# turn the property_matrix un-directioned
-	for i in range(len(property_matrix)):
-		for j in range(len(property_matrix)):
-			property_matrix[i][j] += property_matrix[j][i]
+	#for i in range(len(property_matrix)):
+	#	for j in range(len(property_matrix)):
+	#		property_matrix[i][j] += property_matrix[j][i]
 	fk_prop_rels = []
 	for pair in fks:
 		if propertynps[pair[0] - 1].table_id == propertynps[pair[1] - 1].table_id:

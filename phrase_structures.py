@@ -54,17 +54,17 @@ def _uniquecount(x):
 	if rho < 0.4 and x.dtype != 'star':
 		distinct = True
 		c_english = 'the number of different values of %s' % x.c_english
-		c_chinese = '%s不同取值的数量' % x.c_chinese
+		c_chinese = '%s不同取值的个数' % x.c_chinese
 		z = ' COUNT(distinct %s) ' % x.z
 	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		distinct = False
 		if x.dtype == 'star':
 			c_english = 'the number of entries'
-			c_chinese = '数量'
+			c_chinese = '个数'
 		else:
 			c_english = 'the number of %s' % x.c_english
-			c_chinese = '%s的数量' % x.c_chinese
+			c_chinese = '%s的个数' % x.c_chinese
 		z = ' COUNT(%s) ' % x.z
 	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
@@ -76,16 +76,16 @@ def _count_uniqueness_specified(x, distinct):
 	# the count must be of integer type, specifically ordinal integer type
 	if distinct and x.dtype != 'star':
 		c_english = 'the number of different values of %s' % x.c_english
-		c_chinese = '%s不同取值的数量' % x.c_chinese
+		c_chinese = '%s不同取值的个数' % x.c_chinese
 		z = ' COUNT(distinct %s) ' % x.z
 	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		if x.dtype == 'star':
 			c_english = 'the number of entries'
-			c_chinese = '数量'
+			c_chinese = '个数'
 		else:
 			c_english = 'the number of %s' % x.c_english
-			c_chinese = '%s的数量' % x.c_chinese
+			c_chinese = '%s的个数' % x.c_chinese
 		z = ' COUNT(%s) ' % x.z
 	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
@@ -191,7 +191,7 @@ class VALUENP(BASENP):
 			try:
 				diff = abs(int(float(self.z)) - float(self.z))
 			except Exception as e:
-				diff = 1000	# set diff to a large number
+				diff = 1000	 # set diff to a large number
 
 			if diff < 0.00001:
 				self.c_english = str(int(float(self.z)))
@@ -308,6 +308,9 @@ class CMP(BASENP):
 		elif mode == 'tail':
 			self.c_english = ' ends with ' + self.c_english
 			self.c_chinese = '以%s为结尾的' % self.c_chinese
+		elif mode == 'equal':
+			self.c_english = ' equals to ' + self.c_english
+			self.c_chinese = '与%s相等的' % self.c_chinese
 		else:
 			# 'mode' must be among 'mid', 'head' and 'tail'
 			raise AssertionError
@@ -458,11 +461,11 @@ class CDT(BASENP):
 
 
 class QRYNP:
-	def __init__(self, np, typenps, propertynps, finalize_sequence=False):
+	def __init__(self, np, typenps, propertynps, finalize_sequence=False, is_recur=False):
 		self.np = np
 		self.z, self.z_toks, self.z_toks_novalue = self.process_z(typenps, propertynps, 0)
-		self.c_english_verbose = self.process_ce_verbose(typenps, propertynps)
-		self.c_chinese_verbose = self.process_cc_verbose(typenps, propertynps)
+		self.c_english_verbose = self.process_ce_verbose(typenps, propertynps, is_recur)
+		self.c_chinese_verbose = self.process_cc_verbose(typenps, propertynps, is_recur)
 		self.c_english_sequence = self.process_ce_step_by_step(typenps, propertynps, finalize=finalize_sequence)
 		self.c_chinese_sequence = self.process_cc_step_by_step(typenps, propertynps, finalize=finalize_sequence)
 		self.c_english = self.c_english_verbose
@@ -622,19 +625,19 @@ class QRYNP:
 			assert self.np.qrynp_2 is not None
 			q2z, q2ztoks, q2ztok2novalue = self.np.qrynp_2.process_z(typenps, propertynps, start_tpos=next_start_tpos)
 			if self.np.has_union:
-				z += ' union ' + q2z
+				z = '( ' + z + ' ) union ( ' + q2z + ' )'
 				z_toks_stripped.append('union')
 				z_toks_stripped += q2ztoks
 				z_toks_novalue.append('union')
 				z_toks_novalue += q2ztok2novalue
 			elif self.np.has_except:
-				z += ' except ' + q2z
+				z = '( ' + z + ' ) except ( ' + q2z + ' )'
 				z_toks_stripped.append('except')
 				z_toks_stripped += q2ztoks
 				z_toks_novalue.append('except')
 				z_toks_novalue += q2ztok2novalue
 			elif self.np.has_intersect:
-				z += ' intersect ' + q2z
+				z = '( ' + z + ' ) intersect ( ' + q2z + ' )'
 				z_toks_stripped.append('intersect')
 				z_toks_stripped += q2ztoks
 				z_toks_novalue.append('intersect')
@@ -653,7 +656,7 @@ class QRYNP:
 
 		return z, z_toks_fin, z_toks_novalue_fin
 
-	def process_ce_verbose(self, typenps, propertynps):
+	def process_ce_verbose(self, typenps, propertynps, is_recur=False):
 		c_english = ''
 		if self.np.group_props is not None:
 			if len(self.np.group_props) > 0:
@@ -723,6 +726,8 @@ class QRYNP:
 					c_english += ', '
 				elif idx + 2 == len(other_tids):
 					c_english += ' and '
+		elif len(self.np.table_ids) == 1 and is_recur is True:
+			pass
 		else:
 			c_english += ' from '
 			for idx, table_id in enumerate(self.np.table_ids):
@@ -891,6 +896,25 @@ class QRYNP:
 
 		c_english.append(sent_1)
 
+		if self.np.cdts is not None:
+			if len(self.np.cdts) > 0:
+				sent_2 = 'Result {0[%d]}: From Result {0[%d]}, find those satisfying ' % (
+					len(c_english), 0)
+				for idx, cond in enumerate(self.np.cdts):
+					if isinstance(cond.right, QRYNP):
+						cond_right_sent = 'Result {0[%d]}: Find' % len(c_english) + cond.right.c_english
+						c_english.append(cond_right_sent)
+						sent_2 += cond.left.c_english.format('') + cond.cmper.c_english.format(
+							' ( Result {0[%d]} ) ' % (len(c_english)-1))
+					else:
+						sent_2 += cond.c_english
+					if idx + 1 < len(self.np.cdts):
+						sent_2 += ' ' + self.np.cdt_linkers[idx] + ' '
+				c_english.append(sent_2)
+		else:
+			self.np.cdts = []
+
+		'''
 		# where conditions info
 		is_and = None  # whether the condition linker for where conditions is 'and'
 		if self.np.cdts is None:
@@ -936,6 +960,7 @@ class QRYNP:
 				is_and = (self.np.cdt_linkers[_idx] == 'and')  # is_and value may change from True to False
 			c_english.append(cur_sent)
 			_idx += 1
+		'''
 
 		selected_in_groupby = True
 		for prop_1 in self.np.queried_props:
@@ -1090,7 +1115,7 @@ class QRYNP:
 
 		return c_english
 
-	def process_cc_verbose(self, typenps, propertynps):
+	def process_cc_verbose(self, typenps, propertynps, is_recur=False):
 		c_chinese = ''
 		if self.np.group_props is not None:
 			if len(self.np.group_props) > 0:
@@ -1140,6 +1165,8 @@ class QRYNP:
 				elif idx + 2 == len(other_tids):
 					c_chinese += '和'
 			c_chinese += '中，找出'
+		elif len(self.np.table_ids) == 1 and is_recur is True:
+			c_chinese += '找出'
 		else:
 			c_chinese += '从'
 			for idx, table_id in enumerate(self.np.table_ids):
@@ -1351,6 +1378,35 @@ class QRYNP:
 					sent_1 += '和'
 		c_chinese.append(sent_1)
 
+		sent_2 = ''
+		if self.np.cdts is not None:
+			if len(self.np.cdts) > 0:
+				sent_2 += '{0[%d]}号结果：从{0[%d]}号结果中，找出满足' % (len(c_chinese), 0)
+		else:
+			self.np.cdts = []
+		for idx, cond in enumerate(self.np.cdts):
+
+			if isinstance(cond.right, QRYNP):
+				cond_right_sent = '{0[%d]}号结果：' % len(c_chinese) + cond.right.c_chinese
+				c_chinese.append(cond_right_sent)
+				sent_2 += cond.left.c_chinese.format('') + cond.cmper.c_chinese.format(
+					'（{0[%d]}号结果）' % (len(c_chinese) - 1))
+			else:
+				sent_2 += cond.c_english
+			sent_2 += cond.c_chinese
+			if idx + 1 < len(self.np.cdts):
+				if self.np.cdt_linkers[idx] == 'or':
+					sent_2 += '或'
+				elif self.np.cdt_linkers[idx] == 'and':
+					sent_2 += '且'
+				else:
+					raise AssertionError
+		if len(self.np.cdts) > 0:
+			sent_2 += '的，'
+		if len(sent_2) > 0:
+			c_chinese.append(sent_2)
+
+		'''
 		# where conditions inf
 		is_and = None  # whether the condition linker for where conditions is 'and'
 		if self.np.cdts is None:
@@ -1398,6 +1454,7 @@ class QRYNP:
 				is_and = (self.np.cdt_linkers[_idx] == 'and')  # is_and value may change from True to False
 			c_chinese.append(cur_sent)
 			_idx += 1
+		'''
 
 		# check if every selected property can be found in 'group-by' property list
 		selected_in_groupby = True
@@ -1464,6 +1521,8 @@ class QRYNP:
 					groupby_sent += '降序'
 				else:
 					raise AssertionError
+				groupby_sent += '找出'
+			else:
 				groupby_sent += '找出'
 
 			tableid_of_last_prop = None

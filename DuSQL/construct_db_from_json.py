@@ -21,6 +21,7 @@ for sch in schema:
 			found = True
 			break
 	if not found:
+		print(dbid)
 		raise AssertionError
 
 revised_schema = []
