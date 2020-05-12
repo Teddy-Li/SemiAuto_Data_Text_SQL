@@ -3,21 +3,21 @@ import json
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-p', '--data_path', type=str, default='./spider/spider/train_spider.json')
+parser.add_argument('-p', '--data_path', type=str, default='./dusql/train.json')
 args = parser.parse_args()
 
 with open(args.data_path, 'r') as fp:
 	data = json.load(fp)
 
-with open('./spider/spider/tables_mod.json', 'r') as fp:
+with open('./dusql/tables_mod.json', 'r') as fp:
 	tables = json.load(fp)
 
 
 # fp = open('train_gold.txt', 'w')
 # for entry in data:
-#	fp.write('final: ' + entry['final']['query']+'\n\n')
+#	fp.write('final: ' + entry['final']['sql_query']+'\n\n')
 #	for turn in entry['interaction']:
-#		fp.write(turn['query']+'\n')
+#		fp.write(turn['sql_query']+'\n')
 #	fp.write('\n\n')
 # fp.close()
 
@@ -141,7 +141,7 @@ for entry_id, entry in enumerate(data):
 	num = len(entry['sql']['from']['table_units'])
 	if num > 3:
 		'''
-		print('query', turn['query'])
+		print('sql_query', turn['sql_query'])
 		print('utterance', turn['utterance'])
 		print("")
 		'''
@@ -159,7 +159,7 @@ for entry_id, entry in enumerate(data):
 			tableunit_bucket.append(tab[1])
 		else:
 			repeated_tables_cnt += 1
-	# print('repeated: ', entry['query'])
+	# print('repeated: ', entry['sql_query'])
 
 	coexistable_table_pairs = []
 	columns_used_by_join = []
@@ -172,17 +172,15 @@ for entry_id, entry in enumerate(data):
 		try:
 			if cond == 'and':
 				continue
-			if cond[0] is not False:
+			if cond[0] != 0:
 				print(cond)
 				raise AssertionError
 			assert cond[2][0] == 0
 			assert cond[2][1][0] == 0
 			assert cond[2][2] is None
-			assert cond[3][0] == 0
-			assert cond[3][2] is False
 			assert cond[4] is None
 			idx1 = cond[2][1][1]
-			idx2 = cond[3][1]
+			idx2 = cond[3]
 			cmper = cond[1]
 			if idx1 not in columns_used_by_join:
 				columns_used_by_join.append(idx1)
@@ -195,7 +193,7 @@ for entry_id, entry in enumerate(data):
 			total_join_conditions += 1
 			if [idx1, idx2] not in db['foreign_keys'] and [idx2, idx1] not in db['foreign_keys']:
 				join_cond_not_fk_cnt += 1
-				print(entry['query'])
+				print(entry['sql_query'])
 				print(entry['question'])
 				if db['column_names'][idx1][1] != db['column_names'][idx2][1]:
 					# print(db['column_names'][idx1], db['column_names'][idx2])
@@ -212,7 +210,7 @@ for entry_id, entry in enumerate(data):
 	if (len(entry['sql']['from']['conds']) - int((len(entry['sql']['from']['conds']) - 1) / 2) + 1) != len(
 			entry['sql']['from']['table_units']) and len(entry['sql']['from']['table_units']) > 1:
 		# print(len(entry['sql']['from']['conds']) - int((len(entry['sql']['from']['conds'])-1)/2) + 1 - len(entry[
-		# 'sql']['from']['table_units'])) print("join: ", entry['query'])
+		# 'sql']['from']['table_units'])) print("join: ", entry['sql_query'])
 		join_cond_moreorless_than_tableminus1_cnt += 1
 	try:
 		num_limit = entry['sql']['limit']
@@ -238,29 +236,24 @@ for entry_id, entry in enumerate(data):
 		assert (len(entry['sql']['orderBy']) == 2)
 		orderbyn = len(entry['sql']['orderBy'][1])
 		# if orderbyn > 1:
-		#	print(turn['query'])
+		#	print(turn['sql_query'])
 		if orderbyn not in num_orderbys:
 			num_orderbys[orderbyn] = 1
 		else:
 			num_orderbys[orderbyn] += 1
 
-		if entry['sql']['select'][0] != False:
-			distinct_query_cnt += 1
-		# print("distinct: ", entry['question'], '; ', entry['query'])
-		assert (len(entry['sql']['select']) == 2)
-
 		orderby_props = []
 		selected_columns = []
 		grouped_columns = []
 		for p in entry['sql']['orderBy'][1]:
-			orderby_props.append(p[1][1])
-			if p[1][1] == 0:
+			orderby_props.append(p[1][1][1])
+			if p[1][1][1] == 0:
 				orderby_star_cnt += 1
 				has_orderby_star = True
-				if p[1][0] == 3:
+				if p[0] == 3:
 					orderby_count_star_cnt += 1
 
-		for p in entry['sql']['select'][1]:
+		for p in entry['sql']['select']:
 			selected_columns.append(p[1][1][1])
 		for p in entry['sql']['groupBy']:
 			grouped_columns.append(p[1])
@@ -282,7 +275,7 @@ for entry_id, entry in enumerate(data):
 	num_of_columns_used_by_orderby += len(columns_used_by_orderby)
 
 	if 'and' in entry['sql']['where'] and 'or' in entry['sql']['where']:
-		# print(entry['query'])
+		# print(entry['sql_query'])
 		pass
 	# about the where condition types
 	columns_used_by_where = []
@@ -293,11 +286,7 @@ for entry_id, entry in enumerate(data):
 			else:
 				where_or_cnt += 1
 			continue
-		if cond[0] != False and cond[1] not in [8, 9]:
-			print(entry)
-			raise AssertionError
 
-		assert cond[2][1][2] == False
 		if cond[2][2] is not None:
 			assert (cond[2][0] != 0)
 			calculation_in_where_cnt += 1
@@ -309,25 +298,27 @@ for entry_id, entry in enumerate(data):
 		if cmper == 8:
 			assert (type(cond[3]) == type({}))
 		if cmper == 9:
-			_ = cond[3].strip('"')
+			_ = str(cond[3]).strip('"')
 			if _[0] == '%' and _[-1] == '%':
 				like_contains_cnt += 1
 			elif _[0] == '%':
 				like_endswith_cnt += 1
 			elif _[-1] == '%':
 				like_startswith_cnt += 1
-			# print(entry['query'], _)
+			# print(entry['sql_query'], _)
 			else:
 				pass
 		# if cmper == 1:
 		#	print("between: ", cond)
 		try:
+			cond[2][1][1] = int(cond[2][1][1])
 			prop_dtype = db['column_types'][cond[2][1][1]]
-		except Exception as e:
+		except ValueError as e:
 			print(db['db_id'], cond[2][1][1])
-			raise
+			prop_dtype = 'datetime'
+			continue
 		if prop_dtype == 'datetime':
-			# print(entry['query'])
+			# print(entry['sql_query'])
 			pass
 		if prop_dtype not in where_cond_cmpers_eachdtype:
 			where_cond_cmpers_eachdtype[prop_dtype] = {}
@@ -348,8 +339,6 @@ for entry_id, entry in enumerate(data):
 			where_cv_cnt += 1
 		elif isinstance(cond[3], list):
 			where_cc_cnt += 1
-			if cond[3][2] is not False:
-				raise AssertionError
 		elif isinstance(cond[3], dict):
 			where_ci_cnt += 1
 			subq = cond[3]
@@ -361,13 +350,12 @@ for entry_id, entry in enumerate(data):
 			if len(subq['from']['table_units']) == 2:
 				# print(entry)
 				pass
-			subq_aggr = subq['select'][1][0][0]
+			subq_aggr = subq['select'][0][0]
 			if subq_aggr not in subq_aggr_bucket:
 				subq_aggr_bucket[subq_aggr] = 1
 			else:
 				subq_aggr_bucket[subq_aggr] += 1
-			assert (len(subq['select'][1]) == 1)
-			assert (len(subq['select'][1][0]) == 2)
+			assert (len(subq['select']) == 1)
 			'''
 			if len(subq['orderBy']) != 0:
 				ods = subq['orderBy'][1]
@@ -381,7 +369,7 @@ for entry_id, entry in enumerate(data):
 			'''
 
 			idx1 = cond[2][1][1]
-			idx2 = subq['select'][1][0][1][1][1]
+			idx2 = subq['select'][0][1][1][1]
 			if [idx1, idx2] not in db['foreign_keys'] and [idx2, idx1] not in db['foreign_keys']:
 				where_subq_not_fk_cnt += 1
 				if db['column_names'][idx1][1] != db['column_names'][idx2][1]:
@@ -415,7 +403,6 @@ for entry_id, entry in enumerate(data):
 	for p in entry['sql']['groupBy']:
 		assert p[0] == 0
 		columns_used_by_groupby.append(p[1])
-		assert (p[2] == False)
 		gbdt = db['column_types'][p[1]]
 		if gbdt not in groupby_dtype_bucket:
 			groupby_dtype_bucket[gbdt] = 1
@@ -436,14 +423,12 @@ for entry_id, entry in enumerate(data):
 	if num_having > 0:
 		for cond in entry['sql']['having']:
 			if cond in ['and', 'or']:
-				# print("Double having: ", entry['query'])
+				# print("Double having: ", entry['sql_query'])
 				continue
 			having_col = cond[2][1][1]
-			assert cond[0] is False
-			assert cond[2][0] == 0
 			if having_col == 0:
 				having_with_star_cnt += 1
-				if cond[2][1][0] == 3:
+				if cond[0] == 3:
 					having_with_count_star_cnt += 1
 					if isinstance(cond[3], int) or isinstance(cond[3], float):
 						having_with_count_star_cv += 1
@@ -463,7 +448,7 @@ for entry_id, entry in enumerate(data):
 				having_cond_cv_cnt += 1
 
 	tables_in_queried_props = []
-	num_of_props_queried = len(entry['sql']['select'][1])
+	num_of_props_queried = len(entry['sql']['select'])
 	if num_of_props_queried not in num_of_props_queried_bucket:
 		num_of_props_queried_bucket[num_of_props_queried] = 1
 	else:
@@ -472,12 +457,9 @@ for entry_id, entry in enumerate(data):
 	have_grouped_by_column_selected = False
 	unselected_groupby_columns = copy.copy(columns_used_by_groupby)
 	# about the tables of properties queried
-	for prop in entry['sql']['select'][1]:
-		if prop[1][1][2] != False and prop[0] != 3:
-			print(entry)
-			raise AssertionError
-		aggr_id = prop[0]
-		prop_id = prop[1][1][1]
+	for prop in entry['sql']['select']:
+		aggr_id = int(prop[0])
+		prop_id = int(prop[1][1][1])
 		if prop_id in unselected_groupby_columns:
 			unselected_groupby_columns.remove(prop_id)
 		if prop_id not in columns_used_by_groupby:
@@ -517,19 +499,19 @@ for entry_id, entry in enumerate(data):
 		if prop_id in columns_used_by_where:
 			num_of_where_columns_queried += 1
 	if have_grouped_by_column_selected and len(unselected_groupby_columns) > 0:
-		print(entry['query'])
+		print(entry['sql_query'])
 		print(entry['question'])
 		print("")
 		groupby_selected_but_not_covered_cnt += 1
 		pass
 	elif have_grouped_by_column_selected:
 		pass
-		#raise AssertionError
+	# raise AssertionError
 	if selected_subset_of_groupby:
 		if len(entry['sql']['orderBy']) > 0:
 			orderby_at_covered_cases_cnt += 1
 			if not has_orderby_star:
-				# print("subset: ", db_id, ': ', entry['query'])
+				# print("subset: ", db_id, ': ', entry['sql_query'])
 				pass
 	if have_grouped_by_column_selected:
 		exist_groupby_selected_cnt += 1
@@ -538,7 +520,7 @@ for entry_id, entry in enumerate(data):
 	#	raise AssertionError
 
 	if has_orderby_star and num_groupby == 0:
-		# print(entry['query'])
+		# print(entry['sql_query'])
 		pass
 	# if len(tables_in_queried_props) == 0:
 	#	print("tables: ", entry)
@@ -555,16 +537,16 @@ for entry_id, entry in enumerate(data):
 	if len(entry['sql']['where']) > 0 and len(entry['sql']['having']) > 0:
 		where_and_having_both_present_cnt += 1
 	# print("where and having both present: ", where_and_having_both_present_cnt)
-	# print('query: ', entry['query'])
+	# print('query: ', entry['sql_query'])
 	# print('question: ', entry['question'])
 	# print("")
 
 	if entry['sql']['union'] is not None:
-		assert len(entry['sql']['orderBy']) == 0
-		if len(entry['sql']['union']['orderBy']) != 0:
-			print(entry)
-			raise AssertionError
-		for prop in entry['sql']['select'][1]:
+		#assert len(entry['sql']['orderBy']) == 0
+		#if len(entry['sql']['union']['orderBy']) != 0:
+		#	print(entry)
+		#	raise AssertionError
+		for prop in entry['sql']['select']:
 			aggr_union = prop[0]
 			if aggr_union not in aggr_union_bucket:
 				aggr_union_bucket[aggr_union] = 1
@@ -573,12 +555,12 @@ for entry_id, entry in enumerate(data):
 
 	if entry['sql']['intersect'] is not None:
 		if len(entry['sql']['orderBy']) != 0 or len(entry['sql']['intersect']['orderBy']) != 0:
-			#print(entry)
+			# print(entry)
 			pass
 
 	if entry['sql']['except'] is not None:
 		if len(entry['sql']['orderBy']) != 0 or len(entry['sql']['except']['orderBy']) != 0:
-			#print(entry)
+			# print(entry)
 			pass
 
 total_entries = float(len(data))
@@ -787,5 +769,5 @@ for key in table_stats:
 	else:
 		n = num_entries[key]
 	table_stats[key]['num_queries'] = n
-with open('./spider/spider/table_stats_for_num_of_queries.json', 'w') as fp:
-	json.dump(table_stats, fp, indent=4)
+#with open('./spider/spider/table_stats_for_num_of_queries.json', 'w') as fp:
+#	json.dump(table_stats, fp, indent=4)

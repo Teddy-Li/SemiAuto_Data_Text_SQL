@@ -19,6 +19,7 @@ parser.add_argument('-l', '--split', type=str, default='train')
 parser.add_argument('-r', '--ref_json', type=str, default='SPIDER_canonicals_all_train.json')
 parser.add_argument('-o', '--out_dir', type=str, default='./spider_converted', help='output directory for "convert"')
 parser.add_argument('--lang', type=str, default='eng')
+parser.add_argument('--setting', type=str, default='spider')
 args = parser.parse_args()
 
 tableid = 0
@@ -249,20 +250,20 @@ def format_sql_dusql(np):
 			if isinstance(item.right, list) or isinstance(item.right, numpy.ndarray):
 				if len(item.right) == 1:
 					if item.left.dtype in ['int', 'star']:
-						hvg.append(int(float(item.right[0].z)))
+						hvg.append(try_to_int(item.right[0].z))
 					elif item.left.dtype == 'double':
-						hvg.append(float(item.right[0].z))
+						hvg.append(try_to_float(item.right[0].z))
 					else:
 						hvg.append(item.right[0].z)
 					hvg.append(None)
 				else:
 					assert (len(item.right) == 2)
 					if item.left.dtype in ['int', 'star']:
-						hvg.append(int(float(item.right[0].z)))
-						hvg.append(int(float(item.right[1].z)))
+						hvg.append(try_to_int(item.right[0].z))
+						hvg.append(try_to_int(item.right[1].z))
 					elif item.left.dtype == 'double':
-						hvg.append(float(item.right[0].z))
-						hvg.append(float(item.right[1].z))
+						hvg.append(try_to_float(item.right[0].z))
+						hvg.append(try_to_float(item.right[1].z))
 					else:
 						hvg.append(item.right[0].z)
 						hvg.append(item.right[1].z)
@@ -316,10 +317,10 @@ def format_sql_dusql(np):
 			if len(cond.right) == 1:
 				if cond.left.dtype in ['int', 'star']:
 					#listed_cond.append(int(float(cond.right[0].z.strip('"').strip("'"))))
-					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
+					listed_cond.append(try_to_int(cond.right[0].z))
 				elif cond.left.dtype == 'double':
 					#listed_cond.append(float(cond.right[0].z.strip('"').strip("'")))
-					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
+					listed_cond.append(try_to_float(cond.right[0].z))
 				else:
 					listed_cond.append(cond.right[0].z)
 				listed_cond.append(None)
@@ -327,13 +328,13 @@ def format_sql_dusql(np):
 				if cond.left.dtype in ['int', 'star']:
 					#listed_cond.append(int(float(cond.right[0].z.strip('"').strip("'"))))
 					#listed_cond.append(int(float(cond.right[1].z.strip('"').strip("'"))))
-					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
-					listed_cond.append(cond.right[1].z.strip('"').strip("'"))
+					listed_cond.append(try_to_int(cond.right[0].z))
+					listed_cond.append(try_to_int(cond.right[1].z))
 				elif cond.left.dtype == 'double':
 					#listed_cond.append(float(cond.right[0].z.strip('"').strip("'")))
 					#listed_cond.append(float(cond.right[1].z.strip('"').strip("'")))
-					listed_cond.append(cond.right[0].z.strip('"').strip("'"))
-					listed_cond.append(cond.right[1].z.strip('"').strip("'"))
+					listed_cond.append(try_to_float(cond.right[0].z))
+					listed_cond.append(try_to_float(cond.right[1].z))
 				else:
 					listed_cond.append(cond.right[0].z)
 					listed_cond.append(cond.right[1].z)
@@ -370,7 +371,7 @@ def format_query_to_dusql(np, qrynp, database_name, sample, headers):
 	return qry_formatted
 
 
-def generate_queries(database_idx, verbose, ref_json):
+def generate_queries(database_idx, verbose, ref_json, lang='eng'):
 	database_path, database_name, typenps, propertynps, type_matrix, property_matrix, prop_rels, fk_rels, valid_database, conn, crsr, num_queries = build_spider_dataset(
 		database_idx)
 	if not valid_database:
@@ -428,7 +429,7 @@ def generate_queries(database_idx, verbose, ref_json):
 		else:
 			raise AssertionError
 		qry_formatted['sql_vec'] = qry_vecs
-		qry_formatted = fetch_refs([qry_formatted], ref_json)[0]
+		qry_formatted = fetch_refs([qry_formatted], ref_json, lang)[0]
 
 
 		try:
@@ -469,7 +470,7 @@ def generate_queries(database_idx, verbose, ref_json):
 	return saved_results, dumped_results, saved_gold, dumped_gold, saved_canonical, dumped_canonical
 
 
-def main(idx, verbose, ref_dir):
+def main(idx, verbose, ref_dir, lang='eng'):
 	# generate queries for English
 	if idx in db_ids_to_ignore:
 		print("database number %d ignored!" % idx)
@@ -478,7 +479,7 @@ def main(idx, verbose, ref_dir):
 	with open(ref_dir, 'r') as fp:
 		ref_json = json.load(fp)
 
-	res_saved, res_dumped, gold_saved, gold_dumped, canonical_saved, canonical_dumped = generate_queries(idx, verbose, ref_json)
+	res_saved, res_dumped, gold_saved, gold_dumped, canonical_saved, canonical_dumped = generate_queries(idx, verbose, ref_json, lang=lang)
 	with open(SAVE_PATH + 'gold_saved.sql', 'a') as fp:
 		for line in gold_saved:
 			fp.write(line + '\n')
@@ -660,6 +661,7 @@ def convert(file_path, mode, set_split, lang):
 		'''
 		try:
 			if SETTING in ['spider', 'chisp']:
+				print(dct['query'])
 				pack = np_from_entry(entry_sql=entry_sql, typenps=typenps, propertynps=propertynps, fk_rels=fk_rels,
 								 finalize=True)
 			elif SETTING == 'dusql':
@@ -667,7 +669,6 @@ def convert(file_path, mode, set_split, lang):
 								 finalize=True)
 			else:
 				raise AssertionError
-
 		except Exception as e:
 			print("False gold SQL: %d" % dct_idx)
 			if SETTING in ['spider', 'chisp']:
@@ -678,6 +679,7 @@ def convert(file_path, mode, set_split, lang):
 				raise AssertionError
 			print(entry_sql['from']['table_units'])
 			continue
+
 
 		if isinstance(pack, str):
 			print("Unexpressable_entry_occurred!")
@@ -828,9 +830,11 @@ def test_edge():
 
 if __name__ == '__main__':
 	begin = time.time()
+
 	idx = args.db_id
 	if args.mode == 'run':
-		main(idx, args.verbose, args.ref_json)
+		for db_idx in NOVEL_DBIDS:
+			main(db_idx, args.verbose, args.ref_json, lang=args.lang)
 	elif args.mode == 'debug':
 		debug(idx, True)
 	elif args.mode == 'hit':
@@ -838,7 +842,7 @@ if __name__ == '__main__':
 	elif args.mode == 'convert-all':
 		convert(args.gold_path, mode='all', set_split=args.split, lang=args.lang)
 	elif args.mode == 'convert-random':
-		convert(args.gold_path, mode='random', set_split=args.split, leng=args.lang)
+		convert(args.gold_path, mode='random', set_split=args.split, lang=args.lang)
 	elif args.mode == 'test_edge':
 		test_edge()
 	else:

@@ -5,6 +5,14 @@ import random
 
 alphas = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l,', 'm']
 
+DEVM_DBIDS = ['pets_1', 'car_1', 'flight_2', 'employee_hire_evaluation', 'cre_Doc_Template_Mgt', 'museum_visit',
+			  'poker_player', 'orchestra', 'network_1', 'dog_kennels']
+TESTM_DBIDS = ['wta_1', 'real_estate_properties', 'singer', 'tvshow', 'battle_death', 'student_transcripts_tracking',
+			   'concert_singer', 'world_1', 'voter_1']  # 'course_teach' has already been annotated, thus is excluded here
+DUSQL_TESTM_DBIDS = ['运动员比赛记录', '洗衣机', '中国高校', '企业融资', '综艺节目', '友好城市', '欧洲杯球队', '打车软件',
+					 '枪击事件', '城市财政收入']
+
+
 def parse_colors_english(item):
 	q = []
 	item = item.split()
@@ -12,14 +20,14 @@ def parse_colors_english(item):
 		tocsv_w = None
 		if w[0] == '@':
 			tocsv_w = '<font color=red>' + w[1:]
-			if tocsv_w.count('@') > 1 or tocsv_w.count('$') > 0:
+			if w.count('@') > 1:
 				print(item)
 				print(tocsv_w)
 				raise AssertionError
 			tocsv_w = tocsv_w.replace('@', '</font>')
 		elif w[0] == '$':
 			tocsv_w = '<font color=blue>' + w[1:]
-			if tocsv_w.count('@') > 0 or tocsv_w.count('$') > 1:
+			if w.count('$') > 1:
 				print(item)
 				print(tocsv_w)
 				raise AssertionError
@@ -48,9 +56,6 @@ def parse_colors_chinese(item):
 				print(item[c_idx])
 				q += c
 				continue
-			if c_start is not None:
-				print(item)
-				raise AssertionError
 			if t_start is None:
 				t_start = c_idx
 				q += '<font color=red>'
@@ -58,9 +63,6 @@ def parse_colors_chinese(item):
 				t_start = None
 				q += '</font>'
 		elif c == '$':
-			if t_start is not None:
-				print(item)
-				raise AssertionError
 			if c_start is None:  # if is the start of a column
 				c_start = c_idx
 				q += '<font color=blue>'
@@ -80,6 +82,8 @@ parser.add_argument('-r', '--run', type=bool, default=False)
 parser.add_argument('-i', '--input', type=str, default='')
 parser.add_argument('-o', '--output', type=str, default='')
 parser.add_argument('-l', '--lang', type=str, default='eng')
+parser.add_argument('-t', '--test', type=bool, default=False)
+parser.add_argument('--dusql_test', type=bool, default=False)
 
 args = parser.parse_args()
 if args.dark:
@@ -107,6 +111,18 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 				sample_file.append(item)
 		file = sample_file
 		#file = random.sample(file, k=50)
+	elif args.test:
+		sample_file = []
+		for item in file:
+			if item['db_id'] in TESTM_DBIDS:
+				sample_file.append(item)
+		file = sample_file
+	elif args.dusql_test:
+		sample_file = []
+		for item in file:
+			if item['db_id'] in DUSQL_TESTM_DBIDS:
+				sample_file.append(item)
+		file = sample_file
 
 	with open(out_path, 'w', encoding='utf-8') as fp:
 		if args.lang == 'eng':

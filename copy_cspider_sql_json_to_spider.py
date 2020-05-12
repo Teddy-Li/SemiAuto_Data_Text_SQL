@@ -73,7 +73,7 @@ def main():
 	with open('./spider/spider/dev.json', 'r') as fp:
 		spider_jsons = json.load(fp)
 
-	with open('./CSpider/dev.json', 'r') as fp:
+	with open('cspider/dev.json', 'r') as fp:
 		cspider_jsons = json.load(fp)
 
 	new_spider_jsons = []

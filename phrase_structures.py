@@ -1,4 +1,5 @@
 import copy
+import utils
 from utils import *
 
 
@@ -9,8 +10,8 @@ def _avg(x):
 	assert (isinstance(x, PROPERTYNP))
 	# assert (x.dtype in CALCULABLE_DTYPES)
 	# the property to be averaged must be single
-	c_english = 'the average of %s' % x.c_english
-	c_chinese = '%s的平均值' % x.c_chinese
+	c_english = '$the average of %s$' % x.c_english.replace('$', '')
+	c_chinese = '$%s的平均值$' % x.c_chinese.replace('$', '')
 	z = ' AVG(%s) ' % x.z
 	# z4toks = 'AVG ( %s ) ' % x.z
 	return c_english, c_chinese, z, False
@@ -19,8 +20,8 @@ def _avg(x):
 def _min(x):
 	assert (isinstance(x, PROPERTYNP))
 	# assert (x.dtype in SUBTRACTABLE_DTYPES)
-	c_english = 'the smallest %s' % x.c_english
-	c_chinese = '%s的最小值' % x.c_chinese
+	c_english = '$the smallest %s$' % x.c_english.replace('$', '')
+	c_chinese = '$%s的最小值$' % x.c_chinese.replace('$', '')
 	z = ' MIN(%s) ' % x.z
 	# z4toks = 'MIN ( %s )' % x.z
 	return c_english, c_chinese, z, False
@@ -29,8 +30,8 @@ def _min(x):
 def _max(x):
 	assert (isinstance(x, PROPERTYNP))
 	# assert (x.dtype in SUBTRACTABLE_DTYPES)
-	c_english = 'the largest %s' % x.c_english
-	c_chinese = '%s的最大值' % x.c_chinese
+	c_english = '$the largest %s$' % x.c_english.replace('$', '')
+	c_chinese = '$%s的最大值$' % x.c_chinese.replace('$', '')
 	z = ' MAX(%s) ' % x.z
 	# z4toks = 'MAX ( %s )' % x.z
 	return c_english, c_chinese, z, False
@@ -39,8 +40,8 @@ def _max(x):
 def _sum(x):
 	assert (isinstance(x, PROPERTYNP))
 	# assert (x.dtype in CALCULABLE_DTYPES)
-	c_english = 'the sum of %s' % x.c_english
-	c_chinese = '%s的总和' % x.c_chinese
+	c_english = '$the sum of %s$' % x.c_english.replace('$', '')
+	c_chinese = '$%s的总和$' % x.c_chinese.replace('$', '')
 	z = ' SUM(%s) ' % x.z
 	# z4toks = 'SUM ( %s )' % x.z
 	return c_english, c_chinese, z, False
@@ -53,18 +54,18 @@ def _uniquecount(x):
 	rho = random.random()
 	if rho < 0.4 and x.dtype != 'star':
 		distinct = True
-		c_english = 'the number of different values of %s' % x.c_english
-		c_chinese = '%s不同取值的个数' % x.c_chinese
+		c_english = '$the number of different values of %s$' % x.c_english.replace('$', '')
+		c_chinese = '$%s不同取值的个数$' % x.c_chinese.replace('$', '')
 		z = ' COUNT(distinct %s) ' % x.z
 	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		distinct = False
 		if x.dtype == 'star':
-			c_english = 'the number of entries'
-			c_chinese = '个数'
+			c_english = '$the number of entries$'
+			c_chinese = '$个数$'
 		else:
-			c_english = 'the number of %s' % x.c_english
-			c_chinese = '%s的个数' % x.c_chinese
+			c_english = '$the number of %s$' % x.c_english.replace('$', '')
+			c_chinese = '$%s的个数$' % x.c_chinese.replace('$', '')
 		z = ' COUNT(%s) ' % x.z
 	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
@@ -75,17 +76,17 @@ def _count_uniqueness_specified(x, distinct):
 	assert (isinstance(x, PROPERTYNP))
 	# the count must be of integer type, specifically ordinal integer type
 	if distinct and x.dtype != 'star':
-		c_english = 'the number of different values of %s' % x.c_english
-		c_chinese = '%s不同取值的个数' % x.c_chinese
+		c_english = '$the number of different values of %s$' % x.c_english.replace('$', '')
+		c_chinese = '$%s不同取值的个数$' % x.c_chinese.replace('$', '')
 		z = ' COUNT(distinct %s) ' % x.z
 	# z4toks = 'COUNT ( distinct %s )' % x.z
 	else:
 		if x.dtype == 'star':
-			c_english = 'the number of entries'
-			c_chinese = '个数'
+			c_english = '$the number of entries$'
+			c_chinese = '$个数$'
 		else:
-			c_english = 'the number of %s' % x.c_english
-			c_chinese = '%s的个数' % x.c_chinese
+			c_english = '$the number of %s$' % x.c_english.replace('$', '')
+			c_chinese = '$%s的个数$' % x.c_chinese.replace('$', '')
 		z = ' COUNT(%s) ' % x.z
 	# z4toks = 'COUNT ( %s )' % x.z
 	return c_english, c_chinese, z, distinct
@@ -99,7 +100,7 @@ def _repeat(x):
 AGGREGATION_FUNCTIONS = [_repeat, _max, _min, _uniquecount, _sum, _avg]
 
 
-class PROP_REL():
+class PROP_REL:
 	def __init__(self, prop_source, prop_target, type_source, type_target, score):
 		self.prop_ids = [prop_source, prop_target]
 		self.table_ids = [type_source, type_target]
@@ -113,7 +114,7 @@ class PROP_REL():
 		print("~~~~")
 
 
-class BASENP():
+class BASENP:
 	# dtypes:
 	#	self:			----
 	#	c_english:		string
@@ -625,19 +626,19 @@ class QRYNP:
 			assert self.np.qrynp_2 is not None
 			q2z, q2ztoks, q2ztok2novalue = self.np.qrynp_2.process_z(typenps, propertynps, start_tpos=next_start_tpos)
 			if self.np.has_union:
-				z = '( ' + z + ' ) union ( ' + q2z + ' )'
+				z = z + ' union ' + q2z
 				z_toks_stripped.append('union')
 				z_toks_stripped += q2ztoks
 				z_toks_novalue.append('union')
 				z_toks_novalue += q2ztok2novalue
 			elif self.np.has_except:
-				z = '( ' + z + ' ) except ( ' + q2z + ' )'
+				z = z + ' except ' + q2z
 				z_toks_stripped.append('except')
 				z_toks_stripped += q2ztoks
 				z_toks_novalue.append('except')
 				z_toks_novalue += q2ztok2novalue
 			elif self.np.has_intersect:
-				z = '( ' + z + ' ) intersect ( ' + q2z + ' )'
+				z = z + ' intersect ' + q2z
 				z_toks_stripped.append('intersect')
 				z_toks_stripped += q2ztoks
 				z_toks_novalue.append('intersect')
@@ -664,14 +665,17 @@ class QRYNP:
 		else:
 			self.np.group_props = []
 		for idx, prop in enumerate(self.np.group_props):
-			c_english += prop.c_english.format('')
+			if prop.is_pk:
+				c_english += typenps[prop.table_id].c_english
+			else:
+				c_english += prop.c_english.format('')
 			if idx + 2 < len(self.np.group_props):
 				c_english += ', '
 			elif idx + 2 == len(self.np.group_props):
 				c_english += ' and '
 
 		if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
-			c_english += ' having '
+			c_english += ' where '
 			for hv_idx, item in enumerate(self.np.having_cdts):
 				c_english += item.c_english
 				if hv_idx < len(self.np.having_cdts) - 1:
@@ -972,6 +976,16 @@ class QRYNP:
 			if not in_groupby:
 				selected_in_groupby = False
 				break
+		groupby_in_selected = True
+		for prop_1 in self.np.group_props:
+			in_selected = False
+			for prop_2 in self.np.queried_props:
+				if prop_1.overall_idx == prop_2.overall_idx:
+					in_selected = True
+					break
+			if not in_selected:
+				groupby_in_selected = False
+				break
 
 		# groupby info
 		if self.np.group_props is not None:
@@ -979,7 +993,10 @@ class QRYNP:
 				groupby_sent = 'Result {0[%d]}: From Result {0[%d]}, for each value of ' % (
 					len(c_english), len(c_english) - 1)
 				for idx, prop in enumerate(self.np.group_props):
-					groupby_sent += prop.c_english.format('')
+					if prop.is_pk:
+						groupby_sent += typenps[prop.table_id].c_english
+					else:
+						groupby_sent += prop.c_english.format('')
 					if idx + 2 < len(self.np.group_props):
 						groupby_sent += ', '
 					elif idx + 2 == len(self.np.group_props):
@@ -1132,7 +1149,10 @@ class QRYNP:
 			c_chinese += '的'
 
 		for idx, prop in enumerate(self.np.group_props):
-			c_chinese += prop.c_chinese.format('')
+			if prop.is_pk:
+				c_chinese += typenps[prop.table_id].c_chinese
+			else:
+				c_chinese += prop.c_chinese.format('')
 			if idx + 2 < len(self.np.group_props):
 				c_chinese += '、'
 			elif idx + 2 == len(self.np.group_props):
@@ -1380,29 +1400,27 @@ class QRYNP:
 
 		sent_2 = ''
 		if self.np.cdts is not None:
-			if len(self.np.cdts) > 0:
+			if len(self.np.cdts) > 1:
 				sent_2 += '{0[%d]}号结果：从{0[%d]}号结果中，找出满足' % (len(c_chinese), 0)
+				for idx, cond in enumerate(self.np.cdts):
+					if isinstance(cond.right, QRYNP):
+						cond_right_sent = '{0[%d]}号结果：' % len(c_chinese) + cond.right.c_chinese
+						c_chinese.append(cond_right_sent)
+						sent_2 += cond.left.c_chinese.format('') + cond.cmper.c_chinese.format(
+							'（{0[%d]}号结果）' % (len(c_chinese) - 1))
+					else:
+						sent_2 += cond.c_chinese
+					if idx + 1 < len(self.np.cdts):
+						if self.np.cdt_linkers[idx] == 'or':
+							sent_2 += '或'
+						elif self.np.cdt_linkers[idx] == 'and':
+							sent_2 += '且'
+						else:
+							raise AssertionError
+				sent_2 += '的，'
 		else:
 			self.np.cdts = []
-		for idx, cond in enumerate(self.np.cdts):
 
-			if isinstance(cond.right, QRYNP):
-				cond_right_sent = '{0[%d]}号结果：' % len(c_chinese) + cond.right.c_chinese
-				c_chinese.append(cond_right_sent)
-				sent_2 += cond.left.c_chinese.format('') + cond.cmper.c_chinese.format(
-					'（{0[%d]}号结果）' % (len(c_chinese) - 1))
-			else:
-				sent_2 += cond.c_english
-			sent_2 += cond.c_chinese
-			if idx + 1 < len(self.np.cdts):
-				if self.np.cdt_linkers[idx] == 'or':
-					sent_2 += '或'
-				elif self.np.cdt_linkers[idx] == 'and':
-					sent_2 += '且'
-				else:
-					raise AssertionError
-		if len(self.np.cdts) > 0:
-			sent_2 += '的，'
 		if len(sent_2) > 0:
 			c_chinese.append(sent_2)
 
@@ -1470,7 +1488,7 @@ class QRYNP:
 
 		# groupby info
 		if self.np.group_props is not None and len(self.np.group_props) > 0:
-			groupby_sent = '{0[%d]}号结果：从{0[%d]}号结果中，在每组' % (
+			groupby_sent = '{0[%d]}号结果：从{0[%d]}号结果中，在每个' % (
 				len(c_chinese), len(c_chinese) - 1)
 
 			if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
@@ -1482,7 +1500,10 @@ class QRYNP:
 				groupby_sent += '的'
 
 			for idx, prop in enumerate(self.np.group_props):
-				groupby_sent += prop.c_chinese.format('')
+				if prop.is_pk:
+					groupby_sent += typenps[prop.table_id].c_chinese
+				else:
+					groupby_sent += prop.c_chinese.format('')
 				if idx + 2 < len(self.np.group_props):
 					groupby_sent += '、'
 				elif idx + 2 == len(self.np.group_props):
@@ -1490,20 +1511,20 @@ class QRYNP:
 
 			# if there are group-by clauses in query, specify the aggregators of queried props along with the
 			# group-by clause itself
-			groupby_sent += '下，'
+			groupby_sent += '的取值下，'
 
 			if selected_in_groupby and self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
-				groupby_sent += '找出具有'
+				groupby_sent += '找出'
+				for ob_idx, item in enumerate(self.np.orderby_props):
+					groupby_sent += item.c_chinese.format('')
+					if ob_idx + 1 < len(self.np.orderby_props):
+						groupby_sent += '、'
 				if self.np.orderby_order == 'asc':
 					groupby_sent += '最小'
 				elif self.np.orderby_order == 'desc':
 					groupby_sent += '最大'
 				else:
 					raise AssertionError
-				for ob_idx, item in enumerate(self.np.orderby_props):
-					groupby_sent += item.c_chinese.format('')
-					if ob_idx + 1 < len(self.np.orderby_props):
-						groupby_sent += '、'
 				groupby_sent += '的'
 				if self.np.limit != 1:
 					groupby_sent += '前%d个' % self.np.limit
@@ -1565,7 +1586,7 @@ class QRYNP:
 			else:
 				istop1 = False
 				if self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
-					limit_cc = '选出前%d个条目' % self.np.limit
+					limit_cc = '选出前%d个' % self.np.limit
 				else:
 					limit_cc = '排列'
 				if self.np.orderby_order == 'asc':

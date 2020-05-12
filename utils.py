@@ -3,6 +3,7 @@ import numpy
 from collections import defaultdict
 from scipy.stats import entropy
 import random
+import json
 
 ITR_TRY = 1000
 NAME_PAIR_WEIGHT = 0.3
@@ -12,29 +13,59 @@ PAGERANK_QUIT_EPOCH = 20
 
 db_ids_to_ignore = [124, 131]
 
-# SETTING = 'spider'
+SETTING = 'spider'
 
-SETTING = 'chisp'
+# SETTING = 'chisp'
 
 # SETTING = 'dusql'
 
-'''
-DATABASE_PATH = './spider/spider/database'
-TABLE_METADATA_PATH = './spider/spider/tables_mod.json'
-SAVE_PATH = './saved_results_spider/'
-'''
 
+SPIDER_DATABASE_PATH = './spider/spider/database'
+SPIDER_TABLE_METADATA_PATH = './spider/spider/tables_mod.json'
+SPIDER_SAVE_PATH = './saved_results_spider/'
+SPIDER_NOVEL_DBIDS = ['wta_1', 'real_estate_properties', 'singer', 'tvshow', 'battle_death', 'student_transcripts_tracking',
+			   'concert_singer', 'world_1', 'voter_1']
 
-DATABASE_PATH = './CSpider/database'
-TABLE_METADATA_PATH = './CSpider/tables_mod.json'
-SAVE_PATH = './saved_results_CSpider'
+CSPIDER_DATABASE_PATH = './cspider/database'
+CSPIDER_TABLE_METADATA_PATH = './cspider/tables_mod.json'
+CSPIDER_SAVE_PATH = './saved_results_CSpider/'
+CSPIDER_NOVEL_DBIDS = ['wta_1', 'real_estate_properties', 'singer', 'tvshow', 'battle_death', 'student_transcripts_tracking',
+			   'concert_singer', 'world_1', 'voter_1']
 
+DUSQL_DATABASE_PATH = 'dusql/databases'
+DUSQL_TABLE_METADATA_PATH = 'dusql/tables_mod.json'
+DUSQL_SAVE_PATH = './saved_results_dusql/'
+DUSQL_NOVEL_DBIDS = ['运动员比赛记录', '洗衣机', '中国高校', '企业融资', '综艺节目', '友好城市', '欧洲杯球队', '打车软件',
+					 '枪击事件', '城市财政收入']
 
-'''
-DATABASE_PATH = './DuSQL/databases'
-TABLE_METADATA_PATH = './DuSQL/tables_mod.json'
-SAVE_PATH = './saved_results_dusql'
-'''
+if SETTING == 'spider':
+	DATABASE_PATH = SPIDER_DATABASE_PATH
+	TABLE_METADATA_PATH = SPIDER_TABLE_METADATA_PATH
+	SAVE_PATH = SPIDER_SAVE_PATH
+	NOVEL_DBNAMES = SPIDER_NOVEL_DBIDS
+elif SETTING == 'cspider':
+	DATABASE_PATH = CSPIDER_DATABASE_PATH
+	TABLE_METADATA_PATH = CSPIDER_TABLE_METADATA_PATH
+	SAVE_PATH = CSPIDER_SAVE_PATH
+	NOVEL_DBNAMES = CSPIDER_NOVEL_DBIDS
+elif SETTING == 'dusql':
+	DATABASE_PATH = DUSQL_DATABASE_PATH
+	TABLE_METADATA_PATH = DUSQL_TABLE_METADATA_PATH
+	SAVE_PATH = DUSQL_SAVE_PATH
+	NOVEL_DBNAMES = DUSQL_NOVEL_DBIDS
+else:
+	raise AssertionError
+NOVEL_DBIDS = []
+
+with open(TABLE_METADATA_PATH, 'r') as fp:
+	tables = json.load(fp)
+
+for item in NOVEL_DBNAMES:
+	for tidx, tab in enumerate(tables):
+		if tab['db_id'] == item:
+			NOVEL_DBIDS.append(tidx)
+			break
+assert len(NOVEL_DBIDS) == len(NOVEL_DBNAMES)
 
 
 def transform2distribution_proportional(scores):
@@ -69,7 +100,7 @@ ALL_DTYPES = ['int', 'varchar(1000)', 'double', 'id', 'datetime', 'bit', 'bool',
 # since those cases with 'in' are covered saperately in function #construct_ci_cdts#
 
 # 1 -> between; 2 -> =; 3 -> >; 4 -> <; 5 -> >=; 6 -> <=; 7 -> !=; 8 -> in; 9 -> like
-CMP_DISTS = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 18, 7, 80, 0]),
+CMP_DISTS_SPIDER = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 18, 7, 80, 0]),
 			 'double': transform2distribution_proportional([24, 16, 190, 65, 12, 4, 4, 2, 0]),
 			 'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 30, 190]),
 			 'id': transform2distribution_proportional([2, 63, 2, 0, 0, 0, 4, 166, 0]),
@@ -81,7 +112,24 @@ CMP_DISTS = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 1
 			 'blob': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0])}
 # for those types without actual data in SPIDER, assign equal probability to each feasible comparer
 # convert into default_dicts in order to be compatible with more database dtypes
-CMP_DISTS = defaultdict(lambda: [0, 1, 0, 0, 0, 0, 1, 1, 0], CMP_DISTS)
+CMP_DISTS_SPIDER = defaultdict(lambda: [0, 1, 0, 0, 0, 0, 1, 1, 0], CMP_DISTS_SPIDER)
+
+CMP_DISTS_DUSQL = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 18, 7, 60, 0, 30]),
+			 'double': transform2distribution_proportional([24, 16, 190, 65, 12, 4, 4, 1.5, 0, 1]),
+			 'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 20, 190, 15]),
+			 'id': transform2distribution_proportional([2, 63, 2, 0, 0, 0, 4, 130, 0, 60]),
+			 'bit': transform2distribution_proportional([0, 2, 0, 0, 0, 0, 0, 0, 0, 0]),
+			 'datetime': transform2distribution_proportional([2, 8, 22, 21, 4, 4, 0, 0, 4, 0]),
+			 'bool': transform2distribution_proportional([0, 10, 0, 0, 0, 0, 0, 0, 0, 0]),
+			 'timestamp': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0, 1]),
+			 'year': transform2distribution_proportional([0, 1, 1, 1, 1, 1, 1, 1, 0, 1]),
+			 'blob': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0, 1])}
+CMP_DISTS_DUSQL = defaultdict(lambda: [0, 1, 0, 0, 0, 0, 1, 1, 0, 1], CMP_DISTS_DUSQL)
+
+if SETTING in  ['spider', 'chisp']:
+	CMP_DISTS = CMP_DISTS_SPIDER
+else:
+	CMP_DISTS = CMP_DISTS_DUSQL
 
 AGGR_DISTS = {'int': transform2distribution_proportional([0, 1, 1, 2.5, 1, 2]),
 			  'double': transform2distribution_proportional([0, 1, 1, 2.5, 1, 2]),
@@ -97,6 +145,19 @@ AGGR_DISTS = {'int': transform2distribution_proportional([0, 1, 1, 2.5, 1, 2]),
 # convert into default_dicts in order to be compatible with more database dtypes
 AGGR_DISTS = defaultdict(lambda: [0, 0, 0, 1, 0, 0], AGGR_DISTS)
 
+
+def try_to_int(tok):
+	try:
+		return int(float(tok.strip('\"\'')))
+	except Exception as e:
+		return tok
+
+
+def try_to_float(tok):
+	try:
+		return float(tok.strip('\"\''))
+	except Exception as e:
+		return tok
 
 def transform2distribution_softmax(scores):
 	dist = softmax(scores)
@@ -233,7 +294,7 @@ def calc_importance(typenps, type_mat, fk_rels, table_ids, prior_scores=None):
 # use entropy as a criterion for group by
 def calc_group_score(dtype, values):
 	if values is None:
-		return 0
+		return 0.00001
 	value_buckets = {}
 	for val in values:
 		if val.z not in value_buckets:
@@ -251,7 +312,7 @@ def choose_groupby_prop(groupable_prop_ids, propertynps, num_groupbys):
 	group_scores = []
 	for prop_id in groupable_prop_ids:
 		group_scores.append(propertynps[prop_id].group_score)
-	group_dist = transform2distribution(group_scores)
+	group_dist = transform2distribution_softmax(group_scores)
 	num_groupbys = min(num_groupbys, len(groupable_prop_ids))
 	try:
 		propids_for_group = numpy.random.choice(groupable_prop_ids, num_groupbys, replace=False, p=group_dist)

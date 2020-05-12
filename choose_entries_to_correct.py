@@ -5,9 +5,9 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--mode', type=str, default='skip')
-parser.add_argument('-f', '--input_fp', type=str, default='./CSpider/train.json')
-parser.add_argument('-o', '--out', type=str, default='./CSpider/train_corrected.json')
-parser.add_argument('-t', '--table_fp', type=str, default='./CSpider/tables_mod.json')
+parser.add_argument('-f', '--input_fp', type=str, default='./cspider/train.json')
+parser.add_argument('-o', '--out', type=str, default='./cspider/train_corrected.json')
+parser.add_argument('-t', '--table_fp', type=str, default='./cspider/tables_mod.json')
 
 
 def get_from_info(table_dct, meta):

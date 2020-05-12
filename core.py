@@ -142,8 +142,17 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 		cmper_distribution = numpy.array(CMP_DISTS['int'])
 	else:
 		cmper_distribution = numpy.array(CMP_DISTS[chosen_prop.dtype])
-	assert (len(cmper_distribution) == 9)
+	if SETTING in ['spider', 'chisp']:
+		assert (len(cmper_distribution) == 9)
+	elif SETTING == 'dusql':
+		assert len(cmper_distribution) == 10
+	else:
+		raise AssertionError
+
+	# forbid 'in' and 'not in' for c-v conditions
 	cmper_distribution[7] = 0
+	cmper_distribution[9] = 0
+
 	cmper_distribution = transform2distribution_proportional(cmper_distribution)
 
 	cmper = copy.deepcopy(numpy.random.choice(CMPERS, p=cmper_distribution))
@@ -189,10 +198,12 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 		for i in range(len(value)):
 			value[i] = VALUENP(str(value[i]), str(value[i]), str(value[i]), 'int')
 
+	if SETTING in ['spider', 'chisp']:
+		assert cmper.index != 0
 	# set negative is moved below 'set_mode' in order to avoid 'starts with not xxx'
-	if cmper.index in [8, 9]:
+	if cmper.index in [8, 9, 0]:
 		rho = random.random()
-		if rho < 0.1 and not no_negative:
+		if rho < 0.1 and not no_negative and SETTING != 'dusql':
 			cmper.set_negative()
 
 	if num_values == 1:
@@ -242,9 +253,12 @@ def construct_cc_where_cdt(available_prop_ids, propertynps, prop_mat, use_aggr_f
 	cmper_distribution[7] = 0  # like operator at index 9-1-1=7 can never appear in c-c or c-i conditions
 	cmper_distribution = transform2distribution_proportional(cmper_distribution)
 	cmper = copy.deepcopy(numpy.random.choice(CMPERS[1:], p=cmper_distribution))
-	if cmper.index in [8, 9]:
+
+	if SETTING in ['spider', 'chisp']:
+		assert cmper.index != 0
+	if cmper.index in [8, 9, 0]:
 		rho = random.random()
-		if rho < 0.1:
+		if rho < 0.1 and SETTING != 'dusql':
 			cmper.set_negative()
 
 	c_english = left_prop.c_english.format('') + cmper.c_english.format(right_prop.c_english.format(''))
@@ -278,9 +292,12 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 			if item.index == 8:  # if the comparer is 'in'
 				cmper = copy.deepcopy(item)
 	assert (cmper is not None)
-	if cmper.index in [8, 9]:
+
+	if SETTING in ['spider', 'chisp']:
+		assert cmper.index != 0
+	if cmper.index in [8, 9, 0]:
 		rho = random.random()
-		if rho < 0.1 and not no_negative:
+		if rho < 0.1 and not no_negative and SETTING != 'dusql':
 			cmper.set_negative()
 	# the aggregators can only be max, min or avg (means can't have aggregator for non-number dtypes)
 	if cmper.index != 8:  # if comparer is not 'in'
@@ -295,7 +312,7 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 													is_recursive=True,
 													specific_props=[prop4right_subq], cursor=cursor,
 													require_singlereturn=(cmper.index != 8), print_verbose=verbose,
-													is_rec=True)
+													is_recur=True)
 
 	if use_aggr_for_left_prop:
 		# assign different distributions for aggregators according to the property dtypes
@@ -449,7 +466,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 				cmper.set_mode('mid')
 			else:
 				raise AssertionError
-		if negative:
+		if negative and SETTING != 'dusql':
 			cmper.set_negative()
 
 		# does not support calculation operators
@@ -1274,10 +1291,16 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					orderby_order='asc', limit=MAX_RETURN_ENTRIES, main_tids=main_tid)
 		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 
-		res = cursor.execute(cur_qrynp.z).fetchall()
+		try:
+			res = cursor.execute(cur_qrynp.z).fetchall()
+		except Exception as e:
+			print(cur_qrynp.z)
+			print(e)
+			raise
+
 		if len(res) == 1:
 			res_is_single = True
-		elif len(res) == 0 or len(res) == len(prev_res):
+		elif len(res) == 0 or len(res) == len(prev_res) and _turn_cnter < 15:
 			if where_cnt > 0:
 				num_wheres -= 1
 			if where_has_same_entity:
@@ -1315,7 +1338,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 
 	groupable_prop_ids = []
 	for prop_id in available_prop_ids:
-		if propertynps[prop_id].is_unique is False:
+		if propertynps[prop_id].is_unique is False and propertynps[prop_id].group_score != 0:
 			groupable_prop_ids.append(prop_id)
 		else:
 			rho = random.random()
@@ -1361,8 +1384,10 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				if item[0] != 1:
 					all_one = False
 					break
+			_ = random.random()
+
 			# if there are no more than 1 value after 'group by' or each group have only one value
-			if len(res) <= 1 or all_one:
+			if (len(res) <= 1 or all_one) and _ < 0.9:
 				discarded_groupby_propids.append(idx)
 			else:
 				# execution-guidance$
@@ -1422,7 +1447,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			if len(res) == 0 or len(res) == len(prev_res):
-				if len(res) == len(prev_res):
+				_ = random.random()
+				if len(res) == len(prev_res) or _ < 0.1:
 					pass
 				else:
 					having_cdts = []
@@ -1832,9 +1858,13 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 					has_union=has_union, has_except=has_except, has_intersect=has_intersect, main_tids=main_tid)
-	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence
-						  , is_recur=is_recur)
-	res = cursor.execute(inspect_qrynp.z).fetchall()
+	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence, is_recur=is_recur)
+	try:
+		res = cursor.execute(inspect_qrynp.z).fetchall()
+	except Exception as e:
+		print(inspect_qrynp.z)
+		print(e)
+		raise
 	if len(res) > 200:
 		DISTINCT_PROB = 0.2
 	elif is_unique(res):

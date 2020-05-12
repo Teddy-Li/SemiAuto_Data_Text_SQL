@@ -190,8 +190,10 @@ def build_spider_dataset(num):
 				item_str = item
 			if prop.dtype in ['datetime', 'bool'] and item_str[0] not in ["'", '"']:
 				item_str = "'" + item_str + "'"
-			elif ('varchar' in prop.dtype or prop.dtype == 'bit') and len(item_str) > 0 and "'" != item_str[0] and '"' != item_str[0] and "'" != item_str[-1] and '"' != item_str[-1]:
+			elif ('varchar' in prop.dtype or prop.dtype in ['bit', 'id']) and len(item_str) > 0 and "'" != item_str[0] and '"' != item_str[0] and "'" != item_str[-1] and '"' != item_str[-1]:
 				item_str = '"' + item_str + '"'
+			elif SETTING == 'dusql':
+				item_str = '"' + item_str.strip('\"\'') + '"'
 
 			# do not save those None or '' values to avoid confusion
 			if item is None or item == '':
