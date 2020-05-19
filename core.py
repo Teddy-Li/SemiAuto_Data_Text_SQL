@@ -1,16 +1,16 @@
 from phrase_structures import *
 from phrase_structures import _uniquecount, _count_uniqueness_specified
 
-
 CMPERS = [CMP(' is between {0[0]} and {0[1]}', '在{0[0]}和{0[1]}之间', ' between {0[0]} and {0[1]}', 1),
 		  CMP(' is equal to {0}', '是{0}', ' = {0}', 2), CMP(' is larger than {0}', '比{0}大', ' > {0}', 3),
 		  CMP(' is smaller than {0}', '比{0}小', ' < {0}', 4), CMP(' is at least {0}', '最低{0}', ' >= {0}', 5),
 		  CMP(' is at most {0}', '最高{0}', ' <= {0}', 6), CMP(' is not {0}', '不等于{0}', ' != {0}', 7),
-		  CMP(' is among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9), CMP(" is not among {0}", '不在{0}之中', ' not in {0} ', 0)]
+		  CMP(' among {0}', '在{0}之中', ' in {0}', 8), CMP('{0}', '{0}', ' like {0}', 9),
+		  CMP(" is not among {0}", '不在{0}之中', ' not in {0} ', 0)]
 
 # these distributions are naturally proportional
-num_tables_distribution = {False: transform2distribution_proportional(numpy.array([4361., 3200., 22., 6.])),
-						   True: transform2distribution_proportional(numpy.array([459., 51., 1., 0.01]))}
+num_tables_distribution = {False: transform2distribution_proportional(numpy.array([4361., 2200., 600., 60.])),
+						   True: transform2distribution_proportional(numpy.array([459., 51., 5., 0.01]))}
 num_wheres_distribution = {False: transform2distribution_proportional(numpy.array([3300., 2500., 900., 400, 1.])),
 						   True: transform2distribution_proportional(numpy.array([4., 1.5, 0.2,
 																				  0.01,
@@ -104,7 +104,7 @@ def fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_ps
 # 'in' comparer in where conditions appear only in those occasions with c-i conditions
 #
 # use_aggr_for_left_prop is equal to true iff it is a having condition
-def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_prop=False, assigned_prop=None,
+def construct_cv_where_cdt(available_prop_ids, propertynps, typenps, use_aggr_for_left_prop=False, assigned_prop=None,
 						   no_negative=False, type_to_count=None):
 	if assigned_prop is None:
 		# the left-value in where conditions cannot have aggregators
@@ -151,11 +151,16 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 
 	# forbid 'in' and 'not in' for c-v conditions
 	cmper_distribution[7] = 0
-	cmper_distribution[9] = 0
+	if SETTING == 'dusql':
+		cmper_distribution[9] = 0
 
 	cmper_distribution = transform2distribution_proportional(cmper_distribution)
-
-	cmper = copy.deepcopy(numpy.random.choice(CMPERS, p=cmper_distribution))
+	if SETTING in ['spider', 'chisp']:
+		cmper = copy.deepcopy(numpy.random.choice(CMPERS[:-1], p=cmper_distribution))
+	elif SETTING == 'dusql':
+		cmper = copy.deepcopy(numpy.random.choice(CMPERS, p=cmper_distribution))
+	else:
+		raise AssertionError
 
 	if cmper.index == 1:
 		num_values = 2
@@ -209,8 +214,8 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 	if num_values == 1:
 		if not isinstance(value[0], VALUENP):
 			raise AssertionError
-		value_ce = value[0].c_english
-		value_cc = value[0].c_chinese
+		value_ce = [value[0].c_english]
+		value_cc = [value[0].c_chinese]
 		value_z = '#' + value[0].z + '#'
 	else:
 		value_ce = []
@@ -226,14 +231,57 @@ def construct_cv_where_cdt(available_prop_ids, propertynps, use_aggr_for_left_pr
 			value_cc.append(item.c_chinese)
 			value_z.append('#' + item.z + '#')
 
-	c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_ce)
-	c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_cc)
+	for i in range(len(value_ce)):
+		if value_ce[i].strip('\'\"') == 'T':
+			value_ce[i] = '\"True\"'
+		elif value_ce[i].strip('\'\"') == 'F':
+			value_ce[i] = '\"False\"'
+		if value_cc[i].strip('\'\"') == 'T':
+			value_cc[i] = '\"真\"'
+		elif value_cc[i].strip('\'\"') == 'F':
+			value_cc[i] = '\"假\"'
+
+	if '年份' in chosen_prop.c_chinese.format(''):
+		year_flag = True
+		for v in value_cc:
+			if not contains_4digits(v):
+				year_flag = False
+		if year_flag:
+			if cmper.index == 3:
+				cmper.c_chinese = '比{0}晚'
+			elif cmper.index == 4:
+				cmper.c_chinese = '比{0}早'
+
+	if 'year' in chosen_prop.c_english.format(''):
+		year_flag = True
+		for v in value_ce:
+			if not contains_4digits(v):
+				year_flag = False
+		if year_flag:
+			if cmper.index == 3:
+				cmper.c_english = ' is after {0}'
+			elif cmper.index == 4:
+				cmper.c_english = ' is before {0}'
+
+	if len(value_ce) == 1:
+		assert len(value_cc) == 1
+		value_ce = value_ce[0]
+		value_cc = value_cc[0]
+
+	if chosen_prop.dtype not in ['star']:
+		c_english = chosen_prop.c_english.format(
+			typenps[chosen_prop.table_id].c_english+'\'s ') + cmper.c_english.format(value_ce)
+		c_chinese = chosen_prop.c_chinese.format(
+			typenps[chosen_prop.table_id].c_chinese+'的') + cmper.c_chinese.format(value_cc)
+	else:
+		c_english = chosen_prop.c_english.format('') + cmper.c_english.format(value_ce)
+		c_chinese = chosen_prop.c_chinese.format('') + cmper.c_chinese.format(value_cc)
 	z = chosen_prop.z + ' ' + cmper.z.format(value_z)
 	cdt = CDT(c_english, c_chinese, z, chosen_prop, value, cmper)
 	return cdt
 
 
-def construct_cc_where_cdt(available_prop_ids, propertynps, prop_mat, use_aggr_for_left_prop=False):
+def construct_cc_where_cdt(available_prop_ids, propertynps, typenps, prop_mat, use_aggr_for_left_prop=False):
 	left_prop_id, right_prop_id = choose_proppair_for_cdt(available_prop_ids, available_prop_ids, propertynps, prop_mat)
 	if left_prop_id is None and right_prop_id is None:
 		return None
@@ -252,7 +300,12 @@ def construct_cc_where_cdt(available_prop_ids, propertynps, prop_mat, use_aggr_f
 	cmper_distribution[6] = 0
 	cmper_distribution[7] = 0  # like operator at index 9-1-1=7 can never appear in c-c or c-i conditions
 	cmper_distribution = transform2distribution_proportional(cmper_distribution)
-	cmper = copy.deepcopy(numpy.random.choice(CMPERS[1:], p=cmper_distribution))
+	if SETTING in ['spider', 'chisp']:
+		cmper = copy.deepcopy(numpy.random.choice(CMPERS[1:-1], p=cmper_distribution))
+	elif SETTING == 'dusql':
+		cmper = copy.deepcopy(numpy.random.choice(CMPERS[1:], p=cmper_distribution))
+	else:
+		raise AssertionError
 
 	if SETTING in ['spider', 'chisp']:
 		assert cmper.index != 0
@@ -261,9 +314,40 @@ def construct_cc_where_cdt(available_prop_ids, propertynps, prop_mat, use_aggr_f
 		if rho < 0.1 and SETTING != 'dusql':
 			cmper.set_negative()
 
-	c_english = left_prop.c_english.format('') + cmper.c_english.format(right_prop.c_english.format(''))
-	c_chinese = left_prop.c_chinese.format('') + cmper.c_chinese.format(right_prop.c_chinese.format(''))
+	if '年份' in left_prop.c_chinese.format(''):
+		random_value = random.choice(left_prop.values)
+		if contains_4digits(random_value.z):
+			year_flag = True
+		else:
+			year_flag = False
+		if year_flag:
+			if cmper.index == 3:
+				cmper.c_chinese = '比{0}晚'
+			elif cmper.index == 4:
+				cmper.c_chinese = '比{0}早'
+
+	if left_prop.dtype not in ['star']:
+		c_english = left_prop.c_english.format(typenps[left_prop.table_id].c_english+'\'s ') + \
+					cmper.c_english.format(right_prop.c_english.format(typenps[right_prop.table_id].c_english+'\'s '))
+		c_chinese = left_prop.c_chinese.format(typenps[left_prop.table_id].c_chinese+'的') + \
+					cmper.c_chinese.format(right_prop.c_chinese.format(typenps[right_prop.table_id].c_chinese+'的'))
+	else:
+		c_english = left_prop.c_english.format('') + \
+					cmper.c_english.format(right_prop.c_english.format(''))
+		c_chinese = left_prop.c_chinese.format('') + \
+					cmper.c_chinese.format(right_prop.c_chinese.format(''))
 	cdt = CDT(c_english, c_chinese, None, left_prop, right_prop, cmper)
+
+	if 'year' in left_prop.c_english.format(''):
+		random_value = random.choice(left_prop.values)
+		if contains_4digits(random_value.z):
+			year_flag = True
+		else:
+			year_flag = False
+		if year_flag:
+			c_english.replace('is smaller than', 'is before')
+			c_english.replace('is larger than', 'is after')
+
 	return cdt
 
 
@@ -286,11 +370,22 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 	cmper_distribution[7] = 0  # like operator at index 9-1-1=7 can never appear in c-c or c-i conditions
 	cmper = None
 	if left_prop.dtype in CALCULABLE_DTYPES:
-		cmper = copy.deepcopy(numpy.random.choice(CMPERS[1:], p=cmper_distribution))
+		if SETTING in ['spider', 'chisp']:
+			cmper = copy.deepcopy(numpy.random.choice(CMPERS[1:-1], p=cmper_distribution))
+		elif SETTING in ['dusql']:
+			cmper = copy.deepcopy(numpy.random.choice(CMPERS[1:], p=cmper_distribution))
+		else:
+			raise AssertionError
 	else:
 		for item in CMPERS:
-			if item.index == 8:  # if the comparer is 'in'
-				cmper = copy.deepcopy(item)
+			if SETTING in ['spider', 'chisp']:
+				if item.index == 8:  # if the comparer is 'in'
+					cmper = copy.deepcopy(item)
+			elif SETTING == 'dusql':
+				if item.index in [8, 0]:  # if the comparer is 'in' or 'not in'
+					cmper = copy.deepcopy(item)
+			else:
+				raise AssertionError
 	assert (cmper is not None)
 
 	if SETTING in ['spider', 'chisp']:
@@ -319,9 +414,38 @@ def construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, p
 		aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)), p=AGGR_DISTS[left_prop.dtype])
 		left_prop.set_aggr(aggr_id)
 
-	c_english = left_prop.c_english.format('') + cmper.c_english.format(
-		' ( ' + right_subq_qrynp.c_english + ' ) ')
-	c_chinese = left_prop.c_chinese.format('') + cmper.c_chinese.format('（' + right_subq_qrynp.c_chinese + '）')
+	if '年份' in left_prop.c_chinese.format(''):
+		random_value = random.choice(left_prop.values)
+		if contains_4digits(random_value.z):
+			year_flag = True
+		else:
+			year_flag = False
+		if year_flag:
+			if cmper.index == 3:
+				cmper.c_chinese = '比{0}晚'
+			elif cmper.index == 4:
+				cmper.c_chinese = '比{0}早'
+
+	if left_prop.dtype not in ['star']:
+		c_english = left_prop.c_english.format(typenps[left_prop.table_id].c_english+'\'s ') + cmper.c_english.format(
+			' ( ' + right_subq_qrynp.c_english + ' ) ')
+		c_chinese = left_prop.c_chinese.format(typenps[left_prop.table_id].c_chinese+'的') + \
+					cmper.c_chinese.format('（' + right_subq_qrynp.c_chinese + '）')
+	else:
+		c_english = left_prop.c_english.format('') + cmper.c_english.format(
+			' ( ' + right_subq_qrynp.c_english + ' ) ')
+		c_chinese = left_prop.c_chinese.format('') + \
+					cmper.c_chinese.format('（' + right_subq_qrynp.c_chinese + '）')
+
+	if 'year' in left_prop.c_english.format(''):
+		random_value = random.choice(left_prop.values)
+		if contains_4digits(random_value.z):
+			year_flag = True
+		else:
+			year_flag = False
+		if year_flag:
+			c_english.replace('is smaller than', 'is before')
+			c_english.replace('is larger than', 'is after')
 	z = left_prop.z + cmper.z.format(' ( ' + right_subq_qrynp.z + ' ) ')
 	cdt = CDT(c_english, c_chinese, z, left_prop, right_subq_qrynp, cmper)
 	return cdt
@@ -348,8 +472,8 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 		assert cond[2][0] == 0 and cond[2][1][0] == 0 and cond[2][1][2] is False and cond[2][2] is None
 		assert cond[3][0] == 0 and cond[3][2] is False
 
-		pid1 = cond[2][1][1]-1
-		pid2 = cond[3][1]-1
+		pid1 = cond[2][1][1] - 1
+		pid2 = cond[3][1] - 1
 		assert pid1 >= 0 and pid2 >= 0
 		prop1 = copy.deepcopy(propertynps[pid1])
 		prop2 = copy.deepcopy(propertynps[pid2])
@@ -414,7 +538,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 		aggr = item[0]
 		if item[1][0] != 0:
 			return "calculation operator in select!"
-		pid = item[1][1][1]-1
+		pid = item[1][1][1] - 1
 		aggr_distinct = item[1][1][2]
 		assert item[1][2] is None
 		if pid < 0:
@@ -473,7 +597,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 		if cond[2][0] != 0:
 			return "calculation operator in 'where'!"
 
-		pid1 = cond[2][1][1]-1
+		pid1 = cond[2][1][1] - 1
 		assert cond[2][1][0] == 0 and cond[2][1][2] is False and cond[2][2] is None
 		assert pid1 >= 0
 		chosen_prop = copy.deepcopy(propertynps[pid1])
@@ -482,7 +606,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 		if isinstance(value, list):
 			assert len(value) == 3
 			assert cond[4] is None
-			pid2 = value[1]-1
+			pid2 = value[1] - 1
 			assert pid2 >= 0
 			prop2 = copy.deepcopy(propertynps[pid2])
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(prop2.c_english.format(''))
@@ -539,7 +663,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 	group_props = []
 	for item in entry_sql['groupBy']:
 		assert item[0] == 0 and item[2] is False
-		gb_pid = item[1]-1
+		gb_pid = item[1] - 1
 		assert gb_pid >= 0
 		gb_prop = copy.deepcopy(propertynps[gb_pid])
 		group_props.append(gb_prop)
@@ -630,7 +754,7 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 			if item[1][2] is not False:
 				pass
 			aggr = item[1][0]
-			ob_pid = item[1][1]-1
+			ob_pid = item[1][1] - 1
 			if ob_pid < 0:
 				ob_prop = copy.deepcopy(STAR_PROP)
 				ob_prop.table_id = table_ids
@@ -698,10 +822,12 @@ def np_from_entry(entry_sql, typenps, propertynps, fk_rels, finalize=False, is_r
 	if not join_simplifiable:
 		main_tid = []
 	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
-				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
+				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts,
+				  orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
 				  has_except=has_except, has_intersect=has_intersect, distinct=distinct, main_tids=main_tid)
-	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize, is_recur=is_recur)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize,
+						is_recur=is_recur)
 	return final_np, final_qrynp
 
 
@@ -725,8 +851,8 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 		assert cond[1] == 2
 		assert cond[2][0] == 0 and cond[2][1][0] == 0 and cond[2][2] is None
 
-		pid1 = cond[2][1][1]-1
-		pid2 = cond[3]-1
+		pid1 = cond[2][1][1] - 1
+		pid2 = cond[3] - 1
 		assert pid1 >= 0 and pid2 >= 0
 		prop1 = copy.deepcopy(propertynps[pid1])
 		prop2 = copy.deepcopy(propertynps[pid2])
@@ -791,7 +917,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 		aggr = item[0]
 		if item[1][0] != 0:
 			return "calculation operator in select!"
-		pid = item[1][1][1]-1
+		pid = item[1][1][1] - 1
 		assert item[1][2] is None
 		if pid < 0:
 			prop = copy.deepcopy(STAR_PROP)
@@ -851,7 +977,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 		if cond[2][0] != 0:
 			return "calculation operator in 'where'!"
 
-		pid1 = cond[2][1][1]-1
+		pid1 = cond[2][1][1] - 1
 		assert cond[2][1][0] == 0 and cond[2][2] is None
 		assert pid1 >= 0
 		chosen_prop = copy.deepcopy(propertynps[pid1])
@@ -862,7 +988,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 			raise AssertionError
 			assert len(value) == 3
 			assert cond[4] is None
-			pid2 = value[1]-1
+			pid2 = value[1] - 1
 			assert pid2 >= 0
 			prop2 = copy.deepcopy(propertynps[pid2])
 			c_english = chosen_prop.c_english.format('') + cmper.c_english.format(prop2.c_english.format(''))
@@ -891,7 +1017,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 		else:
 			try:
 				if chosen_prop.dtype not in ['int', 'double', 'year', 'datetime']:
-					value = "'"+str(value)+"'"
+					value = "'" + str(value) + "'"
 				value = VALUENP(str(value), str(value), str(value), chosen_prop.dtype)
 				value_z = '#' + value.z + '#'
 				value_str = value.z
@@ -921,7 +1047,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 	group_props = []
 	for item in entry_sql['groupBy']:
 		assert item[0] == 0
-		gb_pid = item[1]-1
+		gb_pid = item[1] - 1
 		assert gb_pid >= 0
 		gb_prop = copy.deepcopy(propertynps[gb_pid])
 		group_props.append(gb_prop)
@@ -1005,7 +1131,7 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 		orderby_order = entry_sql['orderBy'][0]
 		for item in entry_sql['orderBy'][1]:
 			aggr = item[0]
-			ob_pid = item[1][1][1]-1
+			ob_pid = item[1][1][1] - 1
 			if item[1][0] != 0:
 				return "calculation operator in 'orderBy' clauses!"
 			if ob_pid < 0:
@@ -1073,17 +1199,20 @@ def np_from_entry_dusql(entry_sql, typenps, propertynps, fk_rels, finalize=False
 	if not join_simplifiable:
 		main_tid = []
 	final_np = NP(queried_props=queried_props, table_ids=table_ids, join_cdts=join_cdts, cdts=cdts,
-				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts, orderby_props=orderby_props,
+				  cdt_linkers=cdt_linkers, group_props=group_props, having_cdts=having_cdts,
+				  orderby_props=orderby_props,
 				  orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2, has_union=has_union,
 				  has_except=has_except, has_intersect=has_intersect, main_tids=main_tid)
-	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize, is_recur=is_recur)
+	final_qrynp = QRYNP(final_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize,
+						is_recur=is_recur)
 	return final_np, final_qrynp
 
 
 # type_mat的连接是单向的；prop_mat的连接是双向的，且矩阵是对称的；这里的property不包括*
 # is_recursive is False & specific_props is not None	->		是一个union / except / intersect 子语句
 def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, is_recursive=False, specific_props=None,
-				  print_verbose=False, finalize_sequence=False, cursor=None, require_singlereturn=False, is_recur=False):
+				  print_verbose=False, finalize_sequence=False, cursor=None, require_singlereturn=False,
+				  is_recur=False):
 	res_is_single = False  # initialize result status as not single
 	# set random seeds
 	random.seed()
@@ -1120,9 +1249,19 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				contain_star_flag = True
 				for item in prop.table_id:
 					if item not in table_ids:
+						if len(table_ids) > 0:
+							cur_join_cdt, redundant_pid = fetch_join_rel(item, table_ids, prop_rels, typenps,
+																		 propertynps, allow_pseudo_rels=True)
+							join_cdts.append(cur_join_cdt)
+							redundant_pids.append(redundant_pid)
 						table_ids.append(item)
 			else:
 				if prop.table_id not in table_ids:
+					if len(table_ids) > 0:
+						cur_join_cdt, redundant_pid = fetch_join_rel(prop.table_id, table_ids, prop_rels, typenps,
+																	 propertynps, allow_pseudo_rels=True)
+						join_cdts.append(cur_join_cdt)
+						redundant_pids.append(redundant_pid)
 					table_ids.append(prop.table_id)
 		# if queried properties contains '*', adding more tables would result in unaligned column numbers between two
 		# sides of 'union/except/intersect'
@@ -1154,7 +1293,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				allow_pseudo_rels = True
 		table_distribution = transform2distribution_proportional(table_distribution)
 		new_tid = numpy.random.choice(numpy.arange(len(typenps)), p=table_distribution)
-		cur_join_cdt, redundant_pid = fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps, allow_pseudo_rels)
+		cur_join_cdt, redundant_pid = fetch_join_rel(new_tid, table_ids, prop_rels, typenps, propertynps,
+													 allow_pseudo_rels)
 		join_cdts.append(cur_join_cdt)
 		table_ids.append(new_tid)
 		redundant_pids.append(redundant_pid)
@@ -1253,21 +1393,21 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				cur_is_ci_flag = True
 			where_has_same_entity = False
 		elif rho < 0.3 and where_cnt == num_wheres - 2:
-			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps)
 			where_cdts.append(current_where_cdt)
 			where_linkers.append('or')
 			where_has_same_entity = True
-			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps,
+			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps,
 													   assigned_prop=current_where_cdt.left)
 		elif rho < 0.95 or SETTING == 'dusql':
-			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps)
 			where_has_same_entity = False
 		else:
-			current_where_cdt = construct_cc_where_cdt(available_prop_ids, propertynps, prop_mat)
+			current_where_cdt = construct_cc_where_cdt(available_prop_ids, propertynps, typenps, prop_mat)
 			where_has_same_entity = False
 		# there is guaranteed to have a c-v condition
 		if current_where_cdt is None:
-			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+			current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps)
 			where_has_same_entity = False
 		where_cdts.append(current_where_cdt)
 
@@ -1376,7 +1516,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			_prop.set_aggr(3)
 			cur_np = NP(prev_np=None, queried_props=[_prop], table_ids=table_ids, join_cdts=join_cdts,
 						cdts=where_cdts, cdt_linkers=where_linkers,
-						group_props=groupby_props + [copy.deepcopy(propertynps[idx])], having_cdts=None, main_tids=main_tid)
+						group_props=groupby_props + [copy.deepcopy(propertynps[idx])], having_cdts=None,
+						main_tids=main_tid)
 			cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, is_recur=is_recur)
 			res = cursor.execute(cur_qrynp.z).fetchall()
 			all_one = True
@@ -1413,13 +1554,14 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					having_usable_prop_ids.append(idx)
 			if rho < 0.03:
 
-				cur_having_cdt = construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat, prop_mat,
-													prop_rels, fk_rels, True, cursor=cursor, no_negative=True,
-													verbose=print_verbose)
+				cur_having_cdt = construct_ci_where_cdt(having_usable_prop_ids, typenps, propertynps, type_mat,
+														prop_mat,
+														prop_rels, fk_rels, True, cursor=cursor, no_negative=True,
+														verbose=print_verbose)
 				if cur_having_cdt is not None:
 					having_cdts.append(cur_having_cdt)
 			elif rho < 0.15:
-				cur_having_cdt = construct_cv_where_cdt(having_usable_prop_ids, propertynps, True, no_negative=True)
+				cur_having_cdt = construct_cv_where_cdt(having_usable_prop_ids, propertynps, typenps, True, no_negative=True)
 				if cur_having_cdt is not None:
 					having_cdts.append(cur_having_cdt)
 			elif rho < 0.4:
@@ -1431,7 +1573,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					type_to_count = typenps[main_tid[0]]
 					_star.c_english = ' the number of %s ' % type_to_count.c_english
 					_star.c_chinese = '%s的数量' % type_to_count.c_chinese
-				having_cdts.append(construct_cv_where_cdt([], propertynps, True, _star, no_negative=True))
+				having_cdts.append(construct_cv_where_cdt([], propertynps, typenps, True, _star, no_negative=True))
 			assert not None in having_cdts
 			# if all groups or no groups are excluded after this 'having_cdts', then don't add this 'having_cdts'
 			_prop = copy.deepcopy(STAR_PROP)
@@ -1471,7 +1613,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		for prop in specific_props:
 			assert (isinstance(prop, PROPERTYNP))
 			prop = copy.deepcopy(prop)
-			if groupby_prop_ids is not None and prop.overall_idx not in available_after_group_by_prop_ids and prop.dtype != 'star':
+			if groupby_prop_ids is not None and prop.overall_idx not in available_after_group_by_prop_ids \
+					and prop.dtype != 'star':
 				# if the specified prop is already aggregated, just keep that aggregator
 				if prop.aggr != 0:
 					pass
@@ -1488,6 +1631,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					groupby_props = []
 					available_after_group_by_prop_ids = None
 					having_cdts = None
+			else:
+				pass
 			props2query.append(prop)
 	elif rho < 0.05:
 		props2query = [copy.deepcopy(STAR_PROP)]
@@ -1495,7 +1640,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 	else:
 		num_props2query = numpy.random.choice([0, 1, 2, 3, 4], p=num_selected_distribution)
 		num_props2query = min(num_props2query, len(available_prop_ids))
-		query_probabilities = calc_forquery_distribution(available_prop_ids, groupby_prop_ids, propertynps)
+		query_probabilities = calc_forquery_distribution(available_prop_ids, groupby_prop_ids, propertynps, where_cdts)
 		propids2query = []
 		if groupby_prop_ids is not None and len(groupby_prop_ids) > 0:
 			rho = random.random()
@@ -1513,8 +1658,10 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				query_probabilities[cdt.left.overall_idx] = 0.000001
 		query_probabilities = transform2distribution_proportional(query_probabilities)
 
-		propids2query += numpy.random.choice(numpy.arange(len(propertynps)), num_props2query, replace=False,
-											 p=query_probabilities).tolist()
+		# propids2query += numpy.random.choice(numpy.arange(len(propertynps)), num_props2query, replace=False,
+		#									 p=query_probabilities).tolist()
+
+		propids2query += fetch_regular_propids_for_query(propertynps, num_props2query, query_probabilities)
 
 		for i in propids2query:
 			assert (i in available_prop_ids)
@@ -1529,13 +1676,21 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 				propids2query.append(numpy.random.choice(additional_props_to_select))
 		num_props2query = len(propids2query)
 		props2query = []
+
+		all_aggregate_if_no_groupby = random.choices([True, False], weights=[0.15, 0.85])[0]
+		have_filled_maxmin_pair = False
+
 		for idx in propids2query:
 			chosen_prop = copy.deepcopy(propertynps[idx])
 			rho = random.random()
 			if groupby_prop_ids is not None and idx not in available_after_group_by_prop_ids:
 				aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)), p=AGGR_DISTS[chosen_prop.dtype])
 				chosen_prop.set_aggr(aggr_id)
-			elif groupby_prop_ids is None and rho < 0.4:
+			elif all_aggregate_if_no_groupby:
+				aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)),
+											  p=AGGR_DISTS[chosen_prop.dtype])
+				chosen_prop.set_aggr(aggr_id)
+			elif groupby_prop_ids is None and rho < 0.2:
 
 				# if there is only one value for this column in query, then we only by probability of 0.05 use 'count()'
 				cur_np = NP(prev_np=None, queried_props=[copy.deepcopy(chosen_prop)], table_ids=table_ids,
@@ -1550,7 +1705,15 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					aggr_id = numpy.random.choice(numpy.arange(len(AGGREGATION_FUNCTIONS)),
 												  p=AGGR_DISTS[chosen_prop.dtype])
 					chosen_prop.set_aggr(aggr_id)
-			props2query.append(chosen_prop)
+			if not propname_in_list(chosen_prop, props2query):
+				props2query.append(chosen_prop)
+			if chosen_prop.aggr in [1, 2] and random.random() < 0.5 and len(propids2query) < 4 and not have_filled_maxmin_pair:
+				the_other_aggr = 1+abs(chosen_prop.aggr-2)
+				chosen_prop_2 = copy.deepcopy(propertynps[chosen_prop.overall_idx])
+				chosen_prop_2.set_aggr(the_other_aggr)
+				if not propname_in_list(chosen_prop_2, props2query):
+					props2query.append(chosen_prop_2)
+					have_filled_maxmin_pair = True
 
 		if rho < 0.15:
 			props2query.pop()
@@ -1558,7 +1721,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			_star.table_id = table_ids
 			rho = random.random()
 			# for queries with group-by, count aggregator has to be added
-			if rho < 0.9 or groupby_prop_ids is not None:
+			if rho < 0.95 or groupby_prop_ids is not None:
 				_star.set_aggr(3)
 				# if there are single2multiple foreign key relationships between the multiple tables, the
 				if len(main_tid) == 1:
@@ -1671,7 +1834,7 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		h = headers[h_idx]
 		found = False
 		for p in propertynps:
-			if p.z.format('').strip('[').strip(']') == h and p.table_id == table_ids[cur_tid_index]:
+			if p.z.format('').strip('[').strip(']').lower() == h.lower() and p.table_id == table_ids[cur_tid_index]:
 				found = True
 				pid = p.overall_idx
 				if pid not in available_prop_ids:
@@ -1687,7 +1850,9 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 			h_idx += 1
 			changed_table = False
 		else:
-			assert not changed_table
+			if changed_table is True and table_ids[cur_tid_index] != table_ids[cur_tid_index-1]:
+				raise AssertionError
+
 			cur_tid_index += 1
 			changed_table = True
 
@@ -1819,11 +1984,13 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 						cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 						orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, main_tids=main_tid)
 			rho = random.random()
-			if rho < 0.1:
+			if rho < 0.2:
 				# here because the assigned properties might not be compatible with group-by clauses or such, it might not
 				# run, if it doesn't run, just discard it
-				np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, is_recursive=False,
-											  specific_props=props2query, cursor=cursor, print_verbose=print_verbose, is_recur=is_recur)
+				np_2, qrynp_2 = scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels,
+											  is_recursive=False,
+											  specific_props=props2query, cursor=cursor, print_verbose=print_verbose,
+											  is_recur=is_recur)
 			else:
 				np_2, qrynp_2 = modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, cur_np,
 											 available_prop_ids_after_where, cursor, print_verbose, is_recur=is_recur)
@@ -1841,7 +2008,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 		cur_np = NP(prev_np=None, queried_props=props2query, table_ids=table_ids, join_cdts=join_cdts,
 					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, main_tids=main_tid)
-		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence, is_recur=is_recur)
+		cur_qrynp = QRYNP(cur_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence,
+						  is_recur=is_recur)
 		res_1 = cursor.execute(cur_qrynp.z).fetchall()
 		res_2 = cursor.execute(qrynp_2.z).fetchall()
 		if either_contain(res_1, res_2):
@@ -1858,7 +2026,8 @@ def scratch_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, 
 					cdts=where_cdts, cdt_linkers=where_linkers, group_props=groupby_props, having_cdts=having_cdts,
 					orderby_props=orderby_props, orderby_order=orderby_order, limit=limit, np_2=np_2, qrynp_2=qrynp_2,
 					has_union=has_union, has_except=has_except, has_intersect=has_intersect, main_tids=main_tid)
-	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence, is_recur=is_recur)
+	inspect_qrynp = QRYNP(inspect_np, typenps=typenps, propertynps=propertynps, finalize_sequence=finalize_sequence,
+						  is_recur=is_recur)
 	try:
 		res = cursor.execute(inspect_qrynp.z).fetchall()
 	except Exception as e:
@@ -1910,13 +2079,13 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, l
 			else:
 				rho = random.random()
 				if rho < 0.7:
-					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps,
+					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps,
 															   assigned_prop=last_np.cdts[to_replace_idx].left)
 				else:
-					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+					current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps)
 			# there is guaranteed to have a c-v condition
 			if current_where_cdt is None:
-				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps)
 
 			# $execution-guidance
 			cur_np = copy.deepcopy(last_np)
@@ -1946,10 +2115,10 @@ def modify_build(typenps, propertynps, type_mat, prop_mat, prop_rels, fk_rels, l
 				current_where_cdt = construct_ci_where_cdt(available_prop_ids, typenps, propertynps, type_mat, prop_mat,
 														   prop_rels, fk_rels, cursor=cursor, verbose=print_verbose)
 			else:
-				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps)
 			# there is guaranteed to have a c-v condition
 			if current_where_cdt is None:
-				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps)
+				current_where_cdt = construct_cv_where_cdt(available_prop_ids, propertynps, typenps)
 
 			# $execution-guidance
 			cur_np = copy.deepcopy(last_np)

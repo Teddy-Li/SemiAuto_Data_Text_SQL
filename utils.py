@@ -4,6 +4,7 @@ from collections import defaultdict
 from scipy.stats import entropy
 import random
 import json
+import re
 
 ITR_TRY = 1000
 NAME_PAIR_WEIGHT = 0.3
@@ -23,14 +24,16 @@ SETTING = 'spider'
 SPIDER_DATABASE_PATH = './spider/spider/database'
 SPIDER_TABLE_METADATA_PATH = './spider/spider/tables_mod.json'
 SPIDER_SAVE_PATH = './saved_results_spider/'
-SPIDER_NOVEL_DBIDS = ['wta_1', 'real_estate_properties', 'singer', 'tvshow', 'battle_death', 'student_transcripts_tracking',
-			   'concert_singer', 'world_1', 'voter_1']
+SPIDER_NOVEL_DBIDS = ['orchestra', 'real_estate_properties', 'singer', 'tvshow', 'battle_death',
+					  'student_transcripts_tracking',
+					  'concert_singer', 'world_1', 'voter_1', 'course_teach']
 
 CSPIDER_DATABASE_PATH = './cspider/database'
 CSPIDER_TABLE_METADATA_PATH = './cspider/tables_mod.json'
 CSPIDER_SAVE_PATH = './saved_results_CSpider/'
-CSPIDER_NOVEL_DBIDS = ['wta_1', 'real_estate_properties', 'singer', 'tvshow', 'battle_death', 'student_transcripts_tracking',
-			   'concert_singer', 'world_1', 'voter_1']
+CSPIDER_NOVEL_DBIDS = ['orchestra', 'real_estate_properties', 'singer', 'tvshow', 'battle_death',
+					   'student_transcripts_tracking',
+					   'concert_singer', 'world_1', 'voter_1']
 
 DUSQL_DATABASE_PATH = 'dusql/databases'
 DUSQL_TABLE_METADATA_PATH = 'dusql/tables_mod.json'
@@ -74,13 +77,17 @@ def transform2distribution_proportional(scores):
 	temp_scores = []
 	for item in scores:
 		if item < 0:
-			temp_scores.append(0)
+			temp_scores.append(0.0000001)
 		else:
 			temp_scores.append(item)
 	total = float(sum(temp_scores))
 	dist = []
-	for item in temp_scores:
-		dist.append(item / total)
+	try:
+		for item in temp_scores:
+			dist.append(item / total)
+	except Exception  as e:
+		print("!")
+		raise
 	return dist
 
 
@@ -101,32 +108,32 @@ ALL_DTYPES = ['int', 'varchar(1000)', 'double', 'id', 'datetime', 'bit', 'bool',
 
 # 1 -> between; 2 -> =; 3 -> >; 4 -> <; 5 -> >=; 6 -> <=; 7 -> !=; 8 -> in; 9 -> like
 CMP_DISTS_SPIDER = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 18, 7, 80, 0]),
-			 'double': transform2distribution_proportional([24, 16, 190, 65, 12, 4, 4, 2, 0]),
-			 'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 30, 190]),
-			 'id': transform2distribution_proportional([2, 63, 2, 0, 0, 0, 4, 166, 0]),
-			 'bit': transform2distribution_proportional([0, 2, 0, 0, 0, 0, 0, 0, 0]),
-			 'datetime': transform2distribution_proportional([2, 8, 22, 21, 4, 4, 0, 0, 4]),
-			 'bool': transform2distribution_proportional([0, 10, 0, 0, 0, 0, 0, 0, 0]),
-			 'timestamp': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0]),
-			 'year': transform2distribution_proportional([0, 1, 1, 1, 1, 1, 1, 1, 0]),
-			 'blob': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0])}
+					'double': transform2distribution_proportional([24, 16, 190, 65, 12, 4, 4, 2, 0]),
+					'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 30, 190]),
+					'id': transform2distribution_proportional([2, 63, 2, 0, 0, 0, 4, 166, 0]),
+					'bit': transform2distribution_proportional([0, 2, 0, 0, 0, 0, 0, 0, 0]),
+					'datetime': transform2distribution_proportional([2, 8, 22, 21, 4, 4, 0, 0, 4]),
+					'bool': transform2distribution_proportional([0, 10, 0, 0, 0, 0, 0, 0, 0]),
+					'timestamp': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0]),
+					'year': transform2distribution_proportional([0, 1, 1, 1, 1, 1, 1, 1, 0]),
+					'blob': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0])}
 # for those types without actual data in SPIDER, assign equal probability to each feasible comparer
 # convert into default_dicts in order to be compatible with more database dtypes
 CMP_DISTS_SPIDER = defaultdict(lambda: [0, 1, 0, 0, 0, 0, 1, 1, 0], CMP_DISTS_SPIDER)
 
 CMP_DISTS_DUSQL = {'int': transform2distribution_proportional([38, 309, 252, 99, 35, 18, 7, 60, 0, 30]),
-			 'double': transform2distribution_proportional([24, 16, 190, 65, 12, 4, 4, 1.5, 0, 1]),
-			 'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 20, 190, 15]),
-			 'id': transform2distribution_proportional([2, 63, 2, 0, 0, 0, 4, 130, 0, 60]),
-			 'bit': transform2distribution_proportional([0, 2, 0, 0, 0, 0, 0, 0, 0, 0]),
-			 'datetime': transform2distribution_proportional([2, 8, 22, 21, 4, 4, 0, 0, 4, 0]),
-			 'bool': transform2distribution_proportional([0, 10, 0, 0, 0, 0, 0, 0, 0, 0]),
-			 'timestamp': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0, 1]),
-			 'year': transform2distribution_proportional([0, 1, 1, 1, 1, 1, 1, 1, 0, 1]),
-			 'blob': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0, 1])}
+				   'double': transform2distribution_proportional([24, 16, 190, 65, 12, 4, 4, 1.5, 0, 1]),
+				   'varchar(1000)': transform2distribution_proportional([0, 2306, 27, 16, 3, 0, 106, 20, 190, 15]),
+				   'id': transform2distribution_proportional([2, 63, 2, 0, 0, 0, 4, 130, 0, 60]),
+				   'bit': transform2distribution_proportional([0, 2, 0, 0, 0, 0, 0, 0, 0, 0]),
+				   'datetime': transform2distribution_proportional([2, 8, 22, 21, 4, 4, 0, 0, 4, 0]),
+				   'bool': transform2distribution_proportional([0, 10, 0, 0, 0, 0, 0, 0, 0, 0]),
+				   'timestamp': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0, 1]),
+				   'year': transform2distribution_proportional([0, 1, 1, 1, 1, 1, 1, 1, 0, 1]),
+				   'blob': transform2distribution_proportional([0, 1, 0, 0, 0, 0, 1, 1, 0, 1])}
 CMP_DISTS_DUSQL = defaultdict(lambda: [0, 1, 0, 0, 0, 0, 1, 1, 0, 1], CMP_DISTS_DUSQL)
 
-if SETTING in  ['spider', 'chisp']:
+if SETTING in ['spider', 'chisp']:
 	CMP_DISTS = CMP_DISTS_SPIDER
 else:
 	CMP_DISTS = CMP_DISTS_DUSQL
@@ -146,6 +153,19 @@ AGGR_DISTS = {'int': transform2distribution_proportional([0, 1, 1, 2.5, 1, 2]),
 AGGR_DISTS = defaultdict(lambda: [0, 0, 0, 1, 0, 0], AGGR_DISTS)
 
 
+def contains_4digits(d):
+	_digits = re.compile('\d')
+	consecutive_cnt = 0
+	for c in d:
+		if bool(_digits.search(c)):
+			consecutive_cnt += 1
+		else:
+			consecutive_cnt = 0
+		if consecutive_cnt == 4:
+			return True
+	return False
+
+
 def try_to_int(tok):
 	try:
 		return int(float(tok.strip('\"\'')))
@@ -158,6 +178,7 @@ def try_to_float(tok):
 		return float(tok.strip('\"\''))
 	except Exception as e:
 		return tok
+
 
 def transform2distribution_softmax(scores):
 	dist = softmax(scores)
@@ -243,7 +264,7 @@ def pagerank_scores(matrix, typenps):
 	assert (matrix.ndim == 2)
 	assert (matrix.shape[0] == matrix.shape[1])
 	last_scores = [len(tp.properties) for tp in typenps]
-	last_scores = [x*len(last_scores)/sum(last_scores) for x in last_scores]  # normalize average to 1
+	last_scores = [x * len(last_scores) / sum(last_scores) for x in last_scores]  # normalize average to 1
 	weightsums = matrix.sum(axis=1, dtype='float').flatten()
 	_iter = 0
 	while True:
@@ -288,6 +309,10 @@ def calc_importance(typenps, type_mat, fk_rels, table_ids, prior_scores=None):
 			for idx_2 in range(len(type_mat)):
 				# the direction of type-mat is pk -> fk
 				scores[idx_2] += type_mat[idx_2, idx_1] * prior_scores[idx_1]
+
+	# discourage repeatitive tables
+	for tid in table_ids:
+		scores[tid] *= 0.2
 	return scores
 
 
@@ -336,9 +361,16 @@ def find_available_propids_after_groupby(propertynps, propids_for_group):
 	return available_after_group_by_prop_ids
 
 
-def calc_forquery_distribution(available_prop_ids, groupby_prop_ids, propertynps):
+def calc_forquery_distribution(available_prop_ids, groupby_prop_ids, propertynps, where_cdts):
 	assert available_prop_ids is not None
 	assert len(available_prop_ids) > 0
+
+	# those tables that have occured in where conditions are less likely present in 'select'
+	where_tids = []
+	for cdt in where_cdts:
+		if cdt.left.table_id not in where_tids:
+			where_tids.append(cdt.left.table_id)
+
 	# average probability of appearance as being queried is set according to stats from SPIDER
 	scores = [0] * len(propertynps)
 	for idx in available_prop_ids:
@@ -352,9 +384,10 @@ def calc_forquery_distribution(available_prop_ids, groupby_prop_ids, propertynps
 			scores[idx] = 1.7
 		else:
 			scores[idx] = 1
-	if groupby_prop_ids is not None:
-		for idx in groupby_prop_ids:
-			scores[idx] += 5
+
+		if propertynps[idx].table_id in where_tids:
+			scores[idx] *= 0.5
+
 	scores = transform2distribution_proportional(scores)
 	return scores
 
@@ -511,7 +544,7 @@ def list_recursively_same(l1, l2):
 		if isinstance(l1[idx], list) and isinstance(l2[idx], list):
 			if not list_recursively_same(l1[idx], l2[idx]):
 				return False
-		elif isinstance(l1[idx], list) or isinstance(l2[idx],list):
+		elif isinstance(l1[idx], list) or isinstance(l2[idx], list):
 			return False
 		elif isinstance(l1[idx], dict) and isinstance(l2[idx], dict):
 			if not sql_is_same(l1[idx], l2[idx]):
@@ -753,7 +786,7 @@ def sql_features_spider(sql_struct):
 			raise AssertionError
 	features += select_feat
 
-	from_feat = [0, 0, 0, 0, 0] # len1, len2, len3, len4, join-equal-to-len_minus_1
+	from_feat = [0, 0, 0, 0, 0]  # len1, len2, len3, len4, join-equal-to-len_minus_1
 	if len(sql_struct['from']['table_units']) == 1:
 		from_feat[0] = 1
 	elif len(sql_struct['from']['table_units']) == 2:
@@ -764,7 +797,7 @@ def sql_features_spider(sql_struct):
 		from_feat[3] = 1
 	else:
 		raise AssertionError
-	if len(sql_struct['from']['conds']) == (len(sql_struct['from']['table_units'])-1):
+	if len(sql_struct['from']['conds']) == (len(sql_struct['from']['table_units']) - 1):
 		from_feat[4] = 2
 	features += from_feat
 
@@ -931,7 +964,7 @@ def sql_features_dusql(sql_struct):
 			raise AssertionError
 	features += select_feat
 
-	from_feat = [0, 0, 0, 0, 0] # len1, len2, len3, len4, join-equal-to-len_minus_1
+	from_feat = [0, 0, 0, 0, 0]  # len1, len2, len3, len4, join-equal-to-len_minus_1
 	if len(sql_struct['from']['table_units']) == 1:
 		from_feat[0] = 1
 	elif len(sql_struct['from']['table_units']) == 2:
@@ -942,7 +975,7 @@ def sql_features_dusql(sql_struct):
 		from_feat[3] = 1
 	else:
 		raise AssertionError
-	if len(sql_struct['from']['conds']) == (len(sql_struct['from']['table_units'])-1):
+	if len(sql_struct['from']['conds']) == (len(sql_struct['from']['table_units']) - 1):
 		from_feat[4] = 2
 	features += from_feat
 
@@ -1098,7 +1131,7 @@ def fetch_refs(res_json, ref_json, lang, same=False):
 			for kv in key_vecs:
 				for vv in val_vecs:
 					# use norm-1 instead of norm-2 to avoid assigning to much credit to larger weighted features
-					cur_dist = numpy.linalg.norm(kv-vv, ord=1)
+					cur_dist = numpy.linalg.norm(kv - vv, ord=1)
 					if cur_dist < min_dist:
 						min_dist = cur_dist
 			distances_backup.append((min_dist, val_idx))

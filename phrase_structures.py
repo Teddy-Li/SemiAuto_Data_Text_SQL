@@ -683,7 +683,7 @@ class QRYNP:
 		if self.np.group_props is not None:
 			if len(self.np.group_props) > 0:
 				c_english += ' , '
-
+		c_english += ' find '
 		if self.np.distinct:
 			c_english += 'all different values of '
 
@@ -693,7 +693,7 @@ class QRYNP:
 			if isinstance(prop.table_id, list):
 				c_english += prop.c_english
 			else:
-				if prop.table_id == tableid_of_last_prop or len(self.np.table_ids) < 2:
+				if prop.table_id == tableid_of_last_prop:
 					name = prop.c_english.format('')
 				else:
 					name = prop.c_english.format(typenps[prop.table_id].c_english + '\'s ')
@@ -758,7 +758,7 @@ class QRYNP:
 			if len(self.np.cdts) > 0:
 				if self.np.join_cdts is not None and len(self.np.join_cdts) > 0:
 					c_english += ','
-				c_english += ' whose '
+				c_english += ' where '
 		else:
 			self.np.cdts = []
 
@@ -783,7 +783,7 @@ class QRYNP:
 				elif self.np.limit == 1:
 					c_english += ' with the %s ' % most
 				else:
-					c_english += ', keep only %d of them with %s ' % (self.np.limit, most)
+					c_english += ', keep only the first %d of them in %s order of ' % (self.np.limit, _order)
 		else:
 			self.np.orderby_props = []
 		for idx, item in enumerate(self.np.orderby_props):
@@ -821,7 +821,7 @@ class QRYNP:
 					if prop.aggr != 3:
 						need_from_even_single = True
 				else:
-					if prop.table_id == tableid_of_last_prop or len(self.np.table_ids) < 2:
+					if prop.table_id == tableid_of_last_prop:
 						name = prop.c_english.format('')
 					else:
 						name = prop.c_english.format(typenps[prop.table_id].c_english + '\'s ')
@@ -906,7 +906,7 @@ class QRYNP:
 					len(c_english), 0)
 				for idx, cond in enumerate(self.np.cdts):
 					if isinstance(cond.right, QRYNP):
-						cond_right_sent = 'Result {0[%d]}: Find' % len(c_english) + cond.right.c_english
+						cond_right_sent = 'Result {0[%d]}: ' % len(c_english) + cond.right.c_english
 						c_english.append(cond_right_sent)
 						sent_2 += cond.left.c_english.format('') + cond.cmper.c_english.format(
 							' ( Result {0[%d]} ) ' % (len(c_english)-1))
@@ -990,27 +990,10 @@ class QRYNP:
 		# groupby info
 		if self.np.group_props is not None:
 			if len(self.np.group_props) > 0:
-				groupby_sent = 'Result {0[%d]}: From Result {0[%d]}, for each value of ' % (
-					len(c_english), len(c_english) - 1)
-				for idx, prop in enumerate(self.np.group_props):
-					if prop.is_pk:
-						groupby_sent += typenps[prop.table_id].c_english
-					else:
-						groupby_sent += prop.c_english.format('')
-					if idx + 2 < len(self.np.group_props):
-						groupby_sent += ', '
-					elif idx + 2 == len(self.np.group_props):
-						groupby_sent += ' and '
-				if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
-					groupby_sent += ' where '
-					for item in self.np.having_cdts:
-						groupby_sent += (item.c_english + ' , ')
-				else:
-					groupby_sent += ' , '
+				groupby_sent = 'Result {0[%d]}: From Result {0[%d]}, find ' % (len(c_english), len(c_english) - 1)
 
 				# if there are group-by clauses in query, specify the aggregators of queried props along with the
 				# group-by clause itself
-				groupby_sent += 'find '
 
 				if selected_in_groupby and self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
 					groupby_sent += 'top %d of ' % self.np.limit
@@ -1049,6 +1032,21 @@ class QRYNP:
 						groupby_sent += item.c_english.format('')
 						if idx + 1 < len(self.np.orderby_props):
 							groupby_sent += ' then '
+
+				groupby_sent += ' for each value of '
+				for idx, prop in enumerate(self.np.group_props):
+					if prop.is_pk:
+						groupby_sent += typenps[prop.table_id].c_english
+					else:
+						groupby_sent += prop.c_english.format('')
+					if idx + 2 < len(self.np.group_props):
+						groupby_sent += ', '
+					elif idx + 2 == len(self.np.group_props):
+						groupby_sent += ' and '
+				if self.np.having_cdts is not None and len(self.np.having_cdts) > 0:
+					groupby_sent += ' where '
+					groupby_sent += ' , '.join([item.c_english for item in self.np.having_cdts])
+
 				c_english.append(groupby_sent)
 
 		if selected_in_groupby:
@@ -1071,7 +1069,7 @@ class QRYNP:
 				else:
 					istop1 = False
 					if self.np.limit is not None and self.np.limit != MAX_RETURN_ENTRIES:
-						limit_ce = 'top %d of ' % self.np.limit
+						limit_ce = 'first %d of ' % self.np.limit
 					else:
 						limit_ce = ''
 					if self.np.orderby_order == 'asc':
@@ -1125,7 +1123,7 @@ class QRYNP:
 
 		# if sequence is short, there'd be no need to make it a sequence
 		if len(c_english) < 3:
-			c_english = ['Result 0: Find '+self.process_ce_verbose(typenps, propertynps)]
+			c_english = ['Result 0: '+self.process_ce_verbose(typenps, propertynps)]
 
 		for ce_i in range(len(c_english)):
 			c_english[ce_i] = c_english[ce_i].replace('%', '')
@@ -1233,7 +1231,7 @@ class QRYNP:
 			if isinstance(prop.table_id, list):
 				c_chinese += prop.c_chinese
 			else:
-				if prop.table_id == tableid_of_last_prop or len(self.np.table_ids) < 2:
+				if prop.table_id == tableid_of_last_prop:
 					name = prop.c_chinese.format('')
 				else:
 					name = prop.c_chinese.format(typenps[prop.table_id].c_chinese + '的')
@@ -1649,3 +1647,28 @@ class QRYNP:
 
 
 STAR_PROP = PROPERTYNP('everything', '全部信息', '*', 'star', overall_idx=-1, values=[], meta_idx=-1)
+
+
+def fetch_regular_propids_for_query(propertynps, num_props2query, query_probs):
+	idx_cnt = 0
+	selected_propids = []
+	cur_query_probs = copy.deepcopy(query_probs)
+	num_props2query = min(num_props2query, numpy.count_nonzero(numpy.array(query_probs)))
+	while idx_cnt < num_props2query:
+		cur_idselected = numpy.random.choice(range(len(propertynps)), p=query_probs)
+		cur_tid = propertynps[cur_idselected].table_id
+		for pid, prop in enumerate(propertynps):
+			assert pid == prop.overall_idx
+			if prop.table_id == cur_tid:
+				cur_query_probs[pid] += 1.5
+		cur_query_probs[cur_idselected] = 0
+		selected_propids.append(cur_idselected)
+		idx_cnt += 1
+	return selected_propids
+
+def propname_in_list(chosen_prop, props2query):
+	propname = chosen_prop.c_english
+	for item in props2query:
+		if item.c_english == propname:
+			return True
+	return False

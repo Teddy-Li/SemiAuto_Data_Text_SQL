@@ -20,14 +20,14 @@ def parse_colors_english(item):
 		tocsv_w = None
 		if w[0] == '@':
 			tocsv_w = '<font color=red>' + w[1:]
-			if w.count('@') > 1:
+			if w.count('@') > 2:
 				print(item)
 				print(tocsv_w)
 				raise AssertionError
 			tocsv_w = tocsv_w.replace('@', '</font>')
 		elif w[0] == '$':
 			tocsv_w = '<font color=blue>' + w[1:]
-			if w.count('$') > 1:
+			if w.count('$') > 2:
 				print(item)
 				print(tocsv_w)
 				raise AssertionError
@@ -84,6 +84,7 @@ parser.add_argument('-o', '--output', type=str, default='')
 parser.add_argument('-l', '--lang', type=str, default='eng')
 parser.add_argument('-t', '--test', type=bool, default=False)
 parser.add_argument('--dusql_test', type=bool, default=False)
+parser.add_argument('--amendment', type=bool, default=False)
 
 args = parser.parse_args()
 if args.dark:
@@ -100,6 +101,8 @@ elif len(args.input) > 0:
 else:
 	raise AssertionError
 
+update_json_flag = False
+
 for path, out_path in zip(PATHS, OUT_PATHS):
 	with open(path, 'r', encoding='utf-8') as fp:
 		file = json.load(fp)
@@ -107,7 +110,7 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 	if args.pilot:
 		sample_file = []
 		for item in file:
-			if item['db_id'] == 'course_teach':
+			if item['db_id'] == '企业融资':
 				sample_file.append(item)
 		file = sample_file
 		#file = random.sample(file, k=50)
@@ -123,15 +126,37 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			if item['db_id'] in DUSQL_TESTM_DBIDS:
 				sample_file.append(item)
 		file = sample_file
+	elif args.amendment:
+		sample_file = []
+		for item in file:
+			if item['db_id'] == 'course_teach':
+				sample_file.append(item)
+		file = sample_file
+
+	print(len(file))
 
 	with open(out_path, 'w', encoding='utf-8') as fp:
-		if args.lang == 'eng':
-			fp.write('topic,sequence,ref_sequence,ref_gold,answer,ref_answer\n')
-		elif args.lang == 'chi':
-			fp.write('topic,sequence,gold,ref_sequence,ref_gold,answer,ref_answer,qryidx\n')
-		else:
-			raise AssertionError
-		for entry in file:
+		fp.write('topic,sequence,ref_sequence,ref_gold,answer,ref_answer,qryidx\n')
+		#fp.write('topic,sequence,gold,ref_sequence,ref_gold,answer,ref_answer,qryidx\n')
+		sqls = []
+		new_entrys = []
+		for ent_idx, entry in enumerate(file):
+			if 'global_idx' not in entry:
+				entry['global_idx'] = ent_idx
+				new_entrys.append(entry)
+				update_json_flag = True
+			sql = None
+			if 'query' in entry:
+				sql = entry['query']
+			elif 'sql_query' in entry:
+				sql = entry['sql_query']
+			else:
+				raise AssertionError
+			if sql in sqls and args.lang == 'eng':
+				continue
+			else:
+				sqls.append(sql)
+
 			dbname = entry['db_id'].split('_')
 			n_dbname = []
 			for w in dbname:
@@ -188,9 +213,12 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 			sequence = sequence.replace('\"', '')
 			sequence = '\"'+sequence+'\"'
 
-			gold = entry['question_gold']
-			gold = gold.replace('"', "'")
-			gold = '\"' + gold + '\"'
+			if 'question_gold' in entry:
+				gold = entry['question_gold']
+				gold = gold.replace('"', "'")
+				gold = '\"' + gold + '\"'
+			else:
+				gold = ''
 
 			entry['answer_sample'][0] = entry['answer_sample'][0].replace('*', 'Everything')
 			answer_sample = '<table border=2> <tr> '
@@ -205,11 +233,10 @@ for path, out_path in zip(PATHS, OUT_PATHS):
 
 			qry_idx = entry['global_idx']
 			qry_idx = '\"'+str(qry_idx)+'\"'
-			if args.lang == 'eng':
-				res = [topic, sequence, ref_sequence, ref_gold, answer_sample, ref_response]
-			elif args.lang == 'chi':
-				res = [topic, sequence, gold, ref_sequence, ref_gold, answer_sample, ref_response, qry_idx]
-			else:
-				raise AssertionError
+			res = [topic, sequence, ref_sequence, ref_gold, answer_sample, ref_response, qry_idx]
+			#res = [topic, sequence, gold, ref_sequence, ref_gold, answer_sample, ref_response, qry_idx]
 			fp.write(','.join(res)+'\n')
 
+	if update_json_flag:
+		with open(path, 'w', encoding='utf-8') as fp:
+			json.dump(new_entrys, fp, indent=4, ensure_ascii=False)
