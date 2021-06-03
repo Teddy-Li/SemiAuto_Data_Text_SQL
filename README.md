@@ -1,4 +1,7 @@
-# data_gen
+# SemiAuto_Data_Text_SQL
+## Intro
+<!---This repository contains the implementation (preliminary) for the paper **Semi-Automatic Construction of Text-to-SQL Data for Domain Transfer**, Tianyi Li, Sujian Li, Mark Steedman. --->
+
 ## Code structure
 * annotate.py: A command line annotation tool to annotate generated canonical utterances, for convenience in manual annotation.
 * __examine_dataset.py__: A python script to look into certain details and statistics in SQL queries of both original SPIDER datasets and our generated datasets.
